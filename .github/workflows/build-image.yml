@@ -18,9 +18,16 @@ concurrency:
   group: build-image-${{ github.ref }}
   cancel-in-progress: true
 
+# Opt into Node 24 for JavaScript actions; silences the deprecation banner
+# GH added in Sep 2025. Safe to remove once all actions we use ship
+# Node-24 defaults.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

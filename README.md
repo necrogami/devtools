@@ -257,6 +257,10 @@ go test ./...
 
 First stable scaffold landed. Working on real dog-food migration of existing projects, CI verification, and incremental polish. See [`SPEC.md`](./SPEC.md) §14 for the implementation order.
 
+## Contributing
+
+Issues and pull requests are welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development setup, the test/release flow, and PR expectations. Community interactions are governed by the [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
+
 ## License
 
 [MIT](./LICENSE)
