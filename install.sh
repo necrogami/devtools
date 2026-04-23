@@ -27,11 +27,14 @@ case "$arch" in
 esac
 
 # ----- resolve version -------------------------------------------------------
+# GitHub's /releases/latest redirects to /releases/tag/<tagname>, which gives
+# us the tag without needing to parse JSON (no jq dependency).
 if [ "$VERSION" = "latest" ]; then
-    VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-        | grep -m1 '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')"
-    if [ -z "$VERSION" ]; then
-        echo "could not determine latest release tag" >&2
+    effective="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+        "https://github.com/${REPO}/releases/latest")"
+    VERSION="${effective##*/}"
+    if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
+        echo "could not determine latest release tag from $effective" >&2
         exit 1
     fi
 fi
