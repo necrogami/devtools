@@ -1,0 +1,39 @@
+name: Documentation
+description: README, SPEC.md, command help, or inline comments are wrong/unclear/missing.
+title: "[docs] "
+labels: ["type: docs", "area: docs"]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Where?
+      description: URL, file path, or command name (e.g., `README.md` section "Quick start", `dev bump --help`).
+      placeholder: "README.md → Quick start"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of issue
+      options:
+        - "Incorrect / misleading"
+        - "Out of date"
+        - "Missing / underspecified"
+        - "Confusing / hard to follow"
+        - "Typo / grammar"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong or missing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix
+      description: Even a rough sketch helps.

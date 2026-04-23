@@ -1,0 +1,68 @@
+name: Feature request
+description: Propose a new capability for the CLI, image, or workflow.
+title: "[feature] "
+labels: ["type: feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Good feature requests lead with the *problem*, not the solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the friction you're hitting today, not the feature you want.
+      placeholder: e.g., "Rotating a project's DEVTOOLS_TAG across 6 projects requires 6 invocations of `dev bump`."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would the ideal CLI surface / behavior look like?
+      placeholder: e.g., "`dev bump --all --tag 2026-05-01` updates every project's .env at once."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds exist today? Why aren't they enough?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which component?
+      options:
+        - "CLI (dev binary)"
+        - "Base image (ghcr.io/necrogami/devtools)"
+        - "Project compose template"
+        - "CI / release pipeline"
+        - "Documentation"
+        - "Cross-cutting"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Would you be willing to implement this?
+      options:
+        - "Yes, I'll open a PR"
+        - "Maybe, with guidance"
+        - "No, just suggesting"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues
+          required: true
+        - label: I read SPEC.md and this proposal doesn't conflict with stated non-goals
+          required: false

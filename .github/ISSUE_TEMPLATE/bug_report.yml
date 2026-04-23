@@ -1,0 +1,105 @@
+name: Bug report
+description: Something's broken in the CLI, base image, or project template.
+title: "[bug] "
+labels: ["type: bug", "status: needs-info"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! A reproducer + `dev doctor` output usually solves 80% of the triage.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: One-paragraph description of what went wrong.
+      placeholder: e.g., `dev up myproject` hangs during compose pull with no network activity
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: e.g., the tools container should start within ~10 seconds
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimum commands that trigger the bug on a fresh host.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dev_version
+    attributes:
+      label: "`dev version` output"
+      render: text
+      placeholder: |
+        dev 0.1.0
+        commit: fcbf487e99a573632d29f4d48a52205404f59864
+        built:  2026-04-23T21:38:47Z
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`dev doctor` output"
+      description: Paste the full output — it diagnoses most environment mismatches.
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which component?
+      options:
+        - "CLI (dev binary)"
+        - "Base image (ghcr.io/necrogami/devtools)"
+        - "Project compose template"
+        - "CI / release pipeline"
+        - "Documentation"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Host OS
+      placeholder: e.g., Ubuntu 24.04, macOS 15.4, Debian 13
+    validations:
+      required: true
+
+  - type: input
+    id: docker
+    attributes:
+      label: Docker version
+      description: Output of `docker version --format '{{.Server.Version}}'`
+      placeholder: "29.4.0"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Compose logs, container logs, CLI stderr — whatever's closest to the failure.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues
+          required: true
+        - label: I ran `dev doctor` and none of the suggested fixes apply
+          required: false

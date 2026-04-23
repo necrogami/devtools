@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Windows support — ongoing discussion
+    url: https://github.com/necrogami/devtools/issues/1
+    about: If you're here about Windows support, please weigh in on issue #1 rather than opening a duplicate.
+  - name: Design spec
+    url: https://github.com/necrogami/devtools/blob/main/SPEC.md
+    about: Read the project design doc before proposing architecture changes.
