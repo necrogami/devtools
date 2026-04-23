@@ -83,6 +83,12 @@ dev bump <name> [--tag X]             Update DEVTOOLS_TAG in projects/<name>/.en
 dev init-shared [--no-seed]           Create (and seed) shared volumes on host
 dev build [--push] [--platform X,Y]   Build the base image via buildx
 dev push [--tag X]                    Alias for build --push
+dev update [--check] [--tag X] [--image]
+                                      Self-update the CLI from the latest
+                                      GitHub release; verifies SHA-256
+                                      checksum before atomic replacement.
+                                      Pass --image to also pull the latest
+                                      base image locally.
 dev doctor                            Host health check (docker, agents, volumes, UID)
 dev version                           Build info
 ```

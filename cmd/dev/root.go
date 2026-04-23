@@ -41,6 +41,7 @@ func newRootCmd() *cobra.Command {
 		newInitSharedCmd(),
 		newBuildCmd(),
 		newPushCmd(),
+		newUpdateCmd(),
 		newDoctorCmd(),
 		newVersionCmd(),
 	)
