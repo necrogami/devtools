@@ -1,0 +1,80 @@
+# Dependabot version updates for devtools.
+#
+# Ecosystems tracked:
+#   - gomod          → go.mod / go.sum              (the `dev` CLI)
+#   - github-actions → .github/workflows/*          (CI action versions)
+#   - docker         → base/Dockerfile              (FROM image tags)
+#
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+
+updates:
+  # -------------------------------------------------------------------------
+  # Go modules — production deps for the `dev` CLI.
+  # -------------------------------------------------------------------------
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "type: chore"
+      - "area: cli"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Roll up minor/patch Go updates into a single weekly PR.
+      # Major bumps still get individual PRs so they can be reviewed
+      # alongside upstream changelogs.
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # -------------------------------------------------------------------------
+  # GitHub Actions — keep CI action versions fresh (and caught up on
+  # the Node 20 → 24 runtime cutover).
+  # -------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "type: chore"
+      - "area: ci"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # -------------------------------------------------------------------------
+  # Docker base image — track debian:trixie-slim tag updates so the
+  # base image stays on patched glibc / openssl releases.
+  # -------------------------------------------------------------------------
+  - package-ecosystem: "docker"
+    directory: "/base"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "type: chore"
+      - "area: image"
+    commit-message:
+      prefix: "chore(image)"
+      include: "scope"
