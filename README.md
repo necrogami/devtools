@@ -213,6 +213,15 @@ dev bump myproject                   # defaults to today's date
 dev up   myproject
 ```
 
+### Updating the `dev` CLI itself
+
+```bash
+dev update --check          # report if a newer release is available
+dev update                  # download, verify SHA-256, atomic replace
+dev update --tag v0.2.0     # pin to a specific release
+dev update --image          # also `docker pull` the latest base image
+```
+
 ### Multi-account Claude Code
 
 Because each project has its own `home` volume and does its own `claude login`, you can authenticate with your work account in `work-project` and your personal account in `side-project` without juggling.

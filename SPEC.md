@@ -110,10 +110,18 @@ devtools/
 ├── .goreleaser.yml
 ├── install.sh                  # fetches latest `dev` for host arch from GH Releases
 ├── .github/
-│   └── workflows/
-│       ├── build-image.yml     # base image → GHCR
-│       └── build-cli.yml       # dev binary → Releases
+│   ├── workflows/
+│   │   ├── build-image.yml     # base image → GHCR (push to base/** + weekly)
+│   │   ├── build-cli.yml       # dev binary → GitHub Releases (on tag v*)
+│   │   └── test.yml            # vet + race tests + cross-compile matrix
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── config.yml          # disables blank issues, pins helpful links
+│   │   ├── bug_report.yml      # requires `dev doctor`/`dev version` output
+│   │   ├── feature_request.yml # problem-first; contributor-willingness
+│   │   └── docs.yml
+│   └── PULL_REQUEST_TEMPLATE.md # summary, type/area, test plan, breaking-change prompt
 ├── .gitignore                  # projects/* except .gitkeep
+├── LICENSE                     # MIT
 ├── SPEC.md                     # this file
 └── README.md
 ```
@@ -259,6 +267,7 @@ Key properties:
 | `dev list` | Same as `ps` but offline (no Docker queries) |
 | `dev bump <name> [--tag X]` | Rewrite `projects/<name>/.env`'s `DEVTOOLS_TAG` |
 | `dev init-shared [--no-seed]` | Idempotent creation of all 10 shared volumes (7 cache + 3 Claude). Seeds Claude volumes from host `~/.claude/{plugins,skills,commands}` on first creation unless `--no-seed` |
+| `dev update [--check] [--tag X] [--force] [--image]` | Self-update the CLI from the latest GitHub release. SHA-256 verification against `checksums.txt`; atomic rename-over-self. `--image` also `docker pull`s the latest base image |
 | `dev doctor` | Host health check (see §9.2) |
 | `dev version` | Build info + image info |
 
@@ -271,7 +280,7 @@ Each reports PASS / WARN / FAIL with a remediation hint:
 4. `gpg-agent` socket present at `$XDG_RUNTIME_DIR/gnupg/S.gpg-agent`
 5. Host user UID/GID == image's baked UID/GID (1000/1000 default)
 6. GHCR auth works (manifest inspect on `latest`)
-7. All 7 shared volumes exist (offer `dev init-shared` if not)
+7. All 10 shared volumes exist (7 cache + 3 Claude) — offer `dev init-shared` if not
 8. `~/.config/gh/hosts.yml` present + token lint (warn if looks like classic PAT)
 
 ### 9.3 Internal packages
@@ -283,6 +292,13 @@ Each reports PASS / WARN / FAIL with a remediation hint:
 - `internal/host` — `doctor` implementations (each check is a `Check` struct returning `Status{Level, Message, Fix}`).
 
 ## 10. Build / Publish / Release
+
+### 10.0 Test workflow (`.github/workflows/test.yml`)
+
+- Trigger: every push to any branch, every PR
+- Steps: `go vet ./...` → `go test -race -coverprofile=coverage.out ./...` → coverage summary → cross-compile matrix (`linux|darwin × amd64|arm64`)
+- Uploads `coverage.out` as a run artifact
+- Required-status for merging (manual setting on the repo)
 
 ### 10.1 Image workflow (`.github/workflows/build-image.yml`)
 
