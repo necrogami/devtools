@@ -18,8 +18,12 @@ func TestParseAssignment(t *testing.T) {
 		{`QUOTED="with spaces"`, "QUOTED", "with spaces", true},
 		{`SINGLE='sq value'`, "SINGLE", "sq value", true},
 		{"EMPTY=", "EMPTY", "", true},
+		{"WITH_EQUALS_IN_VAL=a=b=c", "WITH_EQUALS_IN_VAL", "a=b=c", true},
+		{"MIXED_QUOTES=\"ends'different\"", "MIXED_QUOTES", "ends'different", true},
 		{"# comment", "", "", false},
+		{"  # indented comment", "", "", false},
 		{"", "", "", false},
+		{"   ", "", "", false},
 		{"=no_key", "", "", false},
 		{"novaluejustword", "", "", false},
 	}
@@ -68,7 +72,6 @@ QUOTED="hello world"
 		}
 	}
 
-	// Save without modification should preserve comments.
 	if err := e.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +86,28 @@ QUOTED="hello world"
 	}
 }
 
+func TestLoadEnvMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nonexistent.env")
+
+	e, err := LoadEnv(path)
+	if err != nil {
+		t.Fatalf("LoadEnv of missing file should succeed: %v", err)
+	}
+	if _, ok := e.Get("ANYTHING"); ok {
+		t.Fatal("empty file shouldn't have any keys")
+	}
+
+	// Setting + saving should create the file.
+	e.Set("NEW", "val")
+	if err := e.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("Save didn't create the file")
+	}
+}
+
 func TestSetInPlaceAndAppend(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
@@ -94,7 +119,7 @@ func TestSetInPlaceAndAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e.Set("B", "two")  // update existing
+	e.Set("B", "two")   // update existing
 	e.Set("C", "three") // append new
 
 	if err := e.Save(); err != nil {
@@ -102,15 +127,37 @@ func TestSetInPlaceAndAppend(t *testing.T) {
 	}
 	content, _ := os.ReadFile(path)
 	got := string(content)
-	if !strings.Contains(got, "A=1") ||
-		!strings.Contains(got, "B=two") ||
-		!strings.Contains(got, "C=three") {
-		t.Fatalf("unexpected save output:\n%s", got)
-	}
-	// Check order: A first, B in its original slot (2nd line), C appended.
+
 	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
-	if lines[0] != "A=1" || lines[1] != "B=two" || lines[2] != "C=three" {
-		t.Fatalf("lines out of order: %v", lines)
+	want := []string{"A=1", "B=two", "C=three"}
+	for i := range want {
+		if i >= len(lines) || lines[i] != want[i] {
+			t.Fatalf("line[%d] = %q, want %q (full: %v)", i, safeGet(lines, i), want[i], lines)
+		}
+	}
+}
+
+func TestSetPreservesCommentsAndBlanks(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	original := "# header\n\nA=1\n# inline for B\nB=2\n\n# footer\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e, err := LoadEnv(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Set("A", "one")
+	if err := e.Save(); err != nil {
+		t.Fatal(err)
+	}
+	roundtrip, _ := os.ReadFile(path)
+	got := string(roundtrip)
+	for _, want := range []string{"# header", "# inline for B", "# footer", "A=one", "B=2"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
 	}
 }
 
@@ -143,6 +190,20 @@ func TestBumpTagReturnsPrevious(t *testing.T) {
 	}
 }
 
+func TestBumpTagNoopWhenUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	_ = os.WriteFile(path, []byte("DEVTOOLS_TAG=same\n"), 0o644)
+
+	prev, err := BumpTag(dir, "same")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prev != "same" {
+		t.Fatalf("prev = %q, want same", prev)
+	}
+}
+
 func TestEnsureRequired(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
@@ -150,8 +211,12 @@ func TestEnsureRequired(t *testing.T) {
 	if err := os.WriteFile(path, []byte("DEVTOOLS_TAG=latest\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnsureRequired(dir); err == nil {
+	err := EnsureRequired(dir)
+	if err == nil {
 		t.Fatal("expected missing PROJECT to error")
+	}
+	if !strings.Contains(err.Error(), "PROJECT") {
+		t.Errorf("error should mention PROJECT: %v", err)
 	}
 
 	if err := os.WriteFile(path, []byte("PROJECT=demo\nDEVTOOLS_TAG=latest\n"), 0o644); err != nil {
@@ -160,4 +225,29 @@ func TestEnsureRequired(t *testing.T) {
 	if err := EnsureRequired(dir); err != nil {
 		t.Fatalf("EnsureRequired on valid .env: %v", err)
 	}
+
+	// Empty value also counts as missing.
+	if err := os.WriteFile(path, []byte("PROJECT=\nDEVTOOLS_TAG=latest\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureRequired(dir); err == nil {
+		t.Fatal("empty PROJECT value should fail EnsureRequired")
+	}
+}
+
+func TestEnvFileAndComposeFilePaths(t *testing.T) {
+	dir := "/tmp/foo"
+	if got := EnvFile(dir); got != "/tmp/foo/.env" {
+		t.Errorf("EnvFile = %q", got)
+	}
+	if got := ComposeFile(dir); got != "/tmp/foo/docker-compose.yml" {
+		t.Errorf("ComposeFile = %q", got)
+	}
+}
+
+func safeGet(ss []string, i int) string {
+	if i < 0 || i >= len(ss) {
+		return "<out-of-range>"
+	}
+	return ss[i]
 }
