@@ -261,6 +261,10 @@ First stable scaffold landed. Working on real dog-food migration of existing pro
 
 Issues and pull requests are welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development setup, the test/release flow, and PR expectations. Community interactions are governed by the [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
 
+## Security
+
+Report vulnerabilities privately per [`SECURITY.md`](./SECURITY.md) — do not open public issues for security reports.
+
 ## License
 
 [MIT](./LICENSE)
