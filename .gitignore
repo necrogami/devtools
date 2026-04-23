@@ -1,0 +1,29 @@
+# Per-project stacks live here and carry .env + compose overrides that are
+# specific to a deployment. They're intentionally never part of this repo.
+/projects/*
+!/projects/.gitkeep
+
+# Build artifacts
+/dev
+/dev-*
+/dist/
+*.test
+*.out
+coverage.*
+
+# Env files (never commit real env files anywhere in repo)
+.env
+*.env.local
+
+# Go tool caches (if running tests locally)
+/go.work
+/go.work.sum
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

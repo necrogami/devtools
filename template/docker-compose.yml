@@ -1,0 +1,94 @@
+# Project stack template — copied by `dev new <name>` into projects/<name>/.
+#
+# Values sourced from the sibling .env file (never committed).
+# Uncomment the service blocks you need; volumes are pre-wired for common cases.
+
+name: ${PROJECT}
+
+services:
+  tools:
+    image: ghcr.io/necrogami/devtools:${DEVTOOLS_TAG:-latest}
+    container_name: ${PROJECT}-tools
+    hostname: ${PROJECT}
+    working_dir: /code
+    restart: unless-stopped
+    init: true
+    stdin_open: true
+    tty: true
+    environment:
+      PROJECT: ${PROJECT}
+      SSH_AUTH_SOCK: /run/host/ssh-agent
+      # Project-specific env goes in .env.
+    volumes:
+      # ----- per-project (strong isolation) --------------------------------
+      - code:/code
+      - home:/home/dev
+      # ----- shared download caches (created by `dev init-shared`) ---------
+      - devtools_mise:/home/dev/.local/share/mise
+      - devtools_composer:/home/dev/.composer/cache
+      - devtools_npm:/home/dev/.npm
+      - devtools_pnpm:/home/dev/.local/share/pnpm/store
+      - devtools_cargo:/home/dev/.cargo/registry
+      - devtools_gomod:/home/dev/go/pkg/mod
+      - devtools_pip:/home/dev/.cache/pip
+      # ----- credentials (read-only, agent sockets + configs) --------------
+      - ${SSH_AUTH_SOCK}:/run/host/ssh-agent
+      - ${XDG_RUNTIME_DIR}/gnupg/S.gpg-agent:/run/host/gpg-agent
+      - ${HOME}/.gnupg/pubring.kbx:/home/dev/.gnupg/pubring.kbx:ro
+      - ${HOME}/.gnupg/trustdb.gpg:/home/dev/.gnupg/trustdb.gpg:ro
+      - ${HOME}/.config/gh:/home/dev/.config/gh:ro
+      - ${HOME}/.gitconfig:/home/dev/.gitconfig:ro
+      # ----- Claude config (read-only from host; data + auth stay per-container) --
+      - ${HOME}/.claude/settings.json:/home/dev/.claude/settings.json:ro
+      - ${HOME}/.claude/CLAUDE.md:/home/dev/.claude/CLAUDE.md:ro
+      - ${HOME}/.claude/agents:/home/dev/.claude/agents:ro
+      # ----- Claude shared-across-projects (install once, available everywhere) --
+      - devtools_claude_plugins:/home/dev/.claude/plugins
+      - devtools_claude_skills:/home/dev/.claude/skills
+      - devtools_claude_commands:/home/dev/.claude/commands
+
+  # ----- optional services ---------------------------------------------------
+  # Uncomment and customize as needed. The tools container reaches these at
+  # hostname `db`, `redis`, etc. (compose service name == DNS name).
+  #
+  # db:
+  #   image: mariadb:11
+  #   restart: unless-stopped
+  #   environment:
+  #     MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root
+  #     MARIADB_DATABASE: ${PROJECT}
+  #   secrets: [db_root]
+  #   volumes:
+  #     - db-data:/var/lib/mysql
+  #
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis-data:/data
+  #
+  # mail:
+  #   image: axllent/mailpit:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:${MAILPIT_WEB_PORT:-8025}:8025"
+
+volumes:
+  code:
+  home:
+  # db-data:
+  # redis-data:
+  devtools_mise:            { external: true }
+  devtools_composer:        { external: true }
+  devtools_npm:             { external: true }
+  devtools_pnpm:            { external: true }
+  devtools_cargo:           { external: true }
+  devtools_gomod:           { external: true }
+  devtools_pip:             { external: true }
+  devtools_claude_plugins:  { external: true }
+  devtools_claude_skills:   { external: true }
+  devtools_claude_commands: { external: true }
+
+# secrets:
+#   db_root:
+#     file: ./secrets/db_root.txt

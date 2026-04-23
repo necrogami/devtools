@@ -1,0 +1,11 @@
+# ~/.config/mise/config.toml — per-user mise defaults.
+# Project-level overrides live in each project's /code/.mise.toml.
+
+[settings]
+experimental = true
+always_keep_install = true      # don't evict runtimes during cleanup
+always_keep_download = false    # but do drop tarballs after install
+legacy_version_file = true      # honor .nvmrc, .ruby-version, .python-version, etc.
+verbose = false
+# Use shallow auto-install prompts so first `dev shell` isn't noisy.
+auto_install = true

@@ -1,0 +1,30 @@
+# ~/.inputrc — readline config for bash (and anything else using readline).
+
+$include /etc/inputrc
+
+# ----- completion ergonomics --------------------------------------------------
+set colored-stats on
+set colored-completion-prefix on
+set completion-ignore-case on
+set completion-prefix-display-length 3
+set show-all-if-ambiguous on
+set show-all-if-unmodified on
+set mark-symlinked-directories on
+set menu-complete-display-prefix on
+set visible-stats on
+set skip-completed-text on
+
+# Show menu on tab immediately (no double-tap).
+TAB: menu-complete
+"\e[Z": menu-complete-backward
+
+# ----- history search on arrow keys ------------------------------------------
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+
+# ----- ctrl + arrow to move by word ------------------------------------------
+"\e[1;5C": forward-word
+"\e[1;5D": backward-word
+
+# ----- bell is obnoxious ------------------------------------------------------
+set bell-style none

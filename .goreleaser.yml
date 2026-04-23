@@ -1,0 +1,62 @@
+# .goreleaser.yml — builds/publishes the `dev` CLI on tag push.
+# Docs: https://goreleaser.com
+version: 2
+
+project_name: devtools
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dev
+    binary: dev
+    main: ./cmd/dev
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: dev
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - SPEC.md
+      - LICENSE*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Tag }}-SNAPSHOT-{{.ShortCommit}}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  github:
+    owner: necrogami
+    name: devtools
+  draft: false
+  prerelease: auto
+  mode: replace
+  name_template: "v{{.Version}}"
