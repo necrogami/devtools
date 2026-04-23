@@ -1,9 +1,27 @@
 name: test
 
+# Run tests only when Go code, Go deps, or this workflow itself changes.
+# Everything else (README, SPEC, LICENSE, issue/PR templates, Dockerfile,
+# install scripts, compose template, install.sh, release workflows) is
+# either validated by a different workflow or doesn't influence test
+# outcomes, so we skip the compute.
+#
+# `paths:` is an allow-list — the workflow runs only when at least one
+# changed file matches a listed pattern.
 on:
   push:
     branches: [main]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yml"
   pull_request:
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yml"
   workflow_dispatch:
 
 permissions:
