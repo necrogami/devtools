@@ -1,55 +1,54 @@
 #!/usr/bin/env bash
-# 20-brew.sh — install Homebrew (Linuxbrew) system-wide.
+# 20-brew.sh — install Homebrew (Linuxbrew) under the dev user's ownership.
 #
-# Homebrew handles both runtimes and their library dependencies (including
-# precompiled formulae), which is what the devtools base image delegates
-# package management to. No language -dev apt packages need to live in the
-# base image as a result: a project that needs PHP drops a Brewfile with
-# `brew "php"` and the entrypoint's `brew bundle install` pulls everything
-# including libsqlite3, libiconv, libsodium, and friends as brew deps.
+# Homebrew requires the user running it to own the prefix — not just
+# membership in some shared group. Rather than split permissions between
+# a separate `linuxbrew` user and `dev`, install everything as `dev`.
+# That's also what the upstream Linuxbrew install.sh does for single-user
+# setups, and it matches the container's only interactive user.
 #
-# Install target is /home/linuxbrew/.linuxbrew (the distribution-blessed
-# prefix). At runtime we mount a shared `devtools_brew` named volume there
-# so formula installs are shared across every project on this host.
+# The prefix stays at the canonical /home/linuxbrew/.linuxbrew so `brew
+# shellenv` finds it and third-party taps that hardcode the path (rare
+# but they exist) keep working. A shared `devtools_brew` docker volume
+# mounted there at runtime gives every project on this host the same
+# cellar, so a formula installed for one project is immediately available
+# to all the others.
 set -euo pipefail
 
-# Homebrew requires a non-root user to run. Create `linuxbrew` as a system
-# user with its own home at the expected prefix.
-groupadd -r linuxbrew || true
-useradd -r -m -s /bin/bash -g linuxbrew -d /home/linuxbrew linuxbrew
+# $USERNAME is passed from the Dockerfile ARG so this script stays honest
+# about who owns what. Default to dev in case it's run standalone.
+USERNAME="${USERNAME:-dev}"
 
-# `useradd -m` creates /home/linuxbrew as 0700 by default, which blocks
-# the `dev` user from traversing into the brew prefix. Open the home
-# (and the prefix) so group members can read and exec, while everything
-# below stays brew-owned.
-chmod 0755 /home/linuxbrew
-install -d -o linuxbrew -g linuxbrew -m 0755 /home/linuxbrew/.linuxbrew
+install -d -m 0755 -o "$USERNAME" -g "$USERNAME" /home/linuxbrew
+install -d -m 0755 -o "$USERNAME" -g "$USERNAME" /home/linuxbrew/.linuxbrew
+install -d -m 0755 -o "$USERNAME" -g "$USERNAME" /home/linuxbrew/.linuxbrew/bin
 
-# Non-interactive install. The official installer would `curl | bash` and
-# prompt; we inline its git clone + env bootstrap so the image build is
-# reproducible without stdin tricks.
-sudo -u linuxbrew git clone --depth=1 \
+# Shallow-clone Homebrew as the dev user so every object lands with the
+# right ownership from the start. The installer's `curl | bash` route
+# would need a tty and would try to sudo; a direct git clone is simpler
+# and fully reproducible.
+sudo -u "$USERNAME" git clone --depth=1 \
     https://github.com/Homebrew/brew \
     /home/linuxbrew/.linuxbrew/Homebrew
 
-install -d -o linuxbrew -g linuxbrew /home/linuxbrew/.linuxbrew/bin
-ln -sf /home/linuxbrew/.linuxbrew/Homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew
+sudo -u "$USERNAME" ln -sf \
+    /home/linuxbrew/.linuxbrew/Homebrew/bin/brew \
+    /home/linuxbrew/.linuxbrew/bin/brew
 
-# Expose brew on PATH system-wide for every shell. Also set up shellenv
-# (HOMEBREW_PREFIX, MANPATH, INFOPATH) — brew's own init does this, we just
-# source it at login.
+# Expose brew to login shells. `brew shellenv` emits the full set of
+# HOMEBREW_* vars + PATH/MANPATH/INFOPATH entries; sourcing it keeps us
+# in lock-step with whatever brew itself considers authoritative.
 cat > /etc/profile.d/brew.sh <<'PROFILE'
-# Homebrew (Linuxbrew): set HOMEBREW_PREFIX and prepend brew's bin to PATH.
+# Homebrew (Linuxbrew): prefix + PATH for every shell.
 if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv 2>/dev/null || true)"
 fi
 PROFILE
 chmod 0644 /etc/profile.d/brew.sh
 
-# Run a one-shot `brew update-reset` as the linuxbrew user to pre-warm the
-# tap and verify the install succeeded. Non-fatal on network hiccups; the
-# first real `brew bundle` call will try again anyway.
-sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew update-reset >/dev/null 2>&1 || true
-sudo -u linuxbrew /home/linuxbrew/.linuxbrew/bin/brew --version
+# Pre-warm the tap as dev. Non-fatal on network hiccups — the first real
+# `brew bundle` call at container start will try again if needed.
+sudo -u "$USERNAME" /home/linuxbrew/.linuxbrew/bin/brew update-reset >/dev/null 2>&1 || true
+sudo -u "$USERNAME" /home/linuxbrew/.linuxbrew/bin/brew --version
 
 rm -f /tmp/20-brew.sh

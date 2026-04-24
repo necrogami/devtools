@@ -21,28 +21,14 @@ COPY base/install/10-apt.sh /tmp/10-apt.sh
 RUN /tmp/10-apt.sh
 
 # -----------------------------------------------------------------------------
-# Layer 2: Homebrew (Linuxbrew). Runtimes, libraries, and CLI tools projects
-# need live here, installed on demand via `brew bundle install` reading
-# /code/Brewfile at first `dev up`. The shared devtools_brew volume mounted
-# at /home/linuxbrew/.linuxbrew dedupes installs across every project on
-# this host.
-# -----------------------------------------------------------------------------
-COPY base/install/20-brew.sh /tmp/20-brew.sh
-RUN /tmp/20-brew.sh
-
-# -----------------------------------------------------------------------------
-# Layer 3: interactive-shell CLI tools — oh-my-posh prompt (with Atomic
-# theme), yq, gh. These are used by every dev shell regardless of project.
+# Layer 2: interactive-shell CLI tools — oh-my-posh prompt (with Atomic
+# theme), yq, gh. Runs before the skel copy because 30-cli-tools.sh
+# populates /etc/skel/.config/oh-my-posh/ itself; putting it before the
+# user copy means the final /etc/skel contains both our custom dotfiles
+# and the upstream-installed theme, and useradd -m seeds both.
 # -----------------------------------------------------------------------------
 COPY base/install/30-cli-tools.sh /tmp/30-cli-tools.sh
 RUN /tmp/30-cli-tools.sh
-
-# -----------------------------------------------------------------------------
-# Layer 4: AI tooling (Claude Code). Churns most on upstream releases —
-# put last so lower layers stay cached across rebuilds.
-# -----------------------------------------------------------------------------
-COPY base/install/40-ai-tools.sh /tmp/40-ai-tools.sh
-RUN /tmp/40-ai-tools.sh
 
 # -----------------------------------------------------------------------------
 # Custom /etc/skel — MUST be in place BEFORE `useradd -m` so the new user's
@@ -56,6 +42,9 @@ COPY --chown=${UID}:${GID} base/skel/ /etc/skel/
 
 # -----------------------------------------------------------------------------
 # Non-root user + sudo-NOPASSWD for adhoc installs inside the container.
+# Must happen BEFORE the brew install layer so the prefix can be owned by
+# ${USERNAME} from the start — brew requires the running user to own its
+# prefix, not just have group access.
 # -----------------------------------------------------------------------------
 RUN groupadd -g ${GID} ${USERNAME} \
  && useradd -m -u ${UID} -g ${GID} -s /bin/bash ${USERNAME} \
@@ -85,8 +74,7 @@ RUN groupadd -g ${GID} ${USERNAME} \
  # Shared-volume mount parents. Pre-create these as ${USERNAME}-owned so that
  # when compose mounts e.g. devtools_pip at /home/dev/.cache/pip, Docker's
  # auto-created /home/dev/.cache parent inherits our ownership instead of
- # defaulting to root. Without this, user-level tools (oh-my-posh's runtime
- # cache, pip cache, etc.) can't write under their expected XDG paths.
+ # defaulting to root.
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.cache \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.cache/pip \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.cargo \
@@ -97,11 +85,24 @@ RUN groupadd -g ${GID} ${USERNAME} \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/go \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/go/pkg \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/go/pkg/mod \
- && install -d -m 0755 -o ${USERNAME} -g ${GID} /run/host \
- # `dev` needs to read Homebrew's prefix. Brew itself runs as the dedicated
- # `linuxbrew` user but the shell in the container reads/executes through
- # this path, so add `dev` to the `linuxbrew` group.
- && usermod -a -G linuxbrew ${USERNAME}
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /run/host
+
+# -----------------------------------------------------------------------------
+# Layer 4: Homebrew (Linuxbrew). Installs into /home/linuxbrew/.linuxbrew
+# owned by ${USERNAME}, so `brew install`/`brew bundle install` inside the
+# container Just Works™ as the dev user. The shared devtools_brew volume
+# mounted at /home/linuxbrew/.linuxbrew at runtime dedupes installs across
+# every project on this host.
+# -----------------------------------------------------------------------------
+COPY base/install/20-brew.sh /tmp/20-brew.sh
+RUN USERNAME=${USERNAME} /tmp/20-brew.sh
+
+# -----------------------------------------------------------------------------
+# Layer 5: AI tooling (Claude Code). Churns most on upstream releases —
+# put last so lower layers stay cached across rebuilds.
+# -----------------------------------------------------------------------------
+COPY base/install/40-ai-tools.sh /tmp/40-ai-tools.sh
+RUN /tmp/40-ai-tools.sh
 
 COPY base/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
