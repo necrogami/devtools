@@ -27,3 +27,10 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Personal working notes — local status snapshots, backlog, scratch plans.
+# This repo is public; these stay on the maintainer's machine only.
+TODO.md
+NOTES.md
+SCRATCH.md
+*.local.md
