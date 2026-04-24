@@ -31,8 +31,13 @@ func newBumpCmd() *cobra.Command {
 				return err
 			}
 			if prev == resolved {
+				// No tag change, but the user often runs `dev bump` to
+				// refresh a floating tag (:latest advanced on the
+				// registry). Surface the pull-and-recreate next step so
+				// the common case isn't a silent no-op.
 				fmt.Fprintf(cmd.OutOrStdout(),
-					"%s already pinned to %s\n", args[0], resolved)
+					"%s already pinned to %s\n  (if the tag has moved since last up: dev up --pull %s)\n",
+					args[0], resolved, args[0])
 				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(),
