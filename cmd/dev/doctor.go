@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -9,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/necrogami/devtools/internal/hostenv"
 )
 
 // level is the severity of a doctor check outcome.
@@ -48,6 +51,7 @@ func newDoctorCmd() *cobra.Command {
 				checkBuildx,
 				checkSSHAgent,
 				checkGPGAgent,
+				checkKeyboxd,
 				checkUID,
 				checkSharedVolumes,
 				checkGHConfig,
@@ -64,6 +68,12 @@ func newDoctorCmd() *cobra.Command {
 					fmt.Fprintf(out, "         fix: %s\n", r.fix)
 				}
 			}
+
+			// Summarize what `dev up` would bind-mount on this host, so the
+			// user sees the discovery result in one place rather than having
+			// to read the generated override after an up.
+			printForwardSummary(out)
+
 			if worst == fail {
 				return fmt.Errorf("one or more checks failed")
 			}
@@ -115,20 +125,114 @@ func checkSSHAgent() result {
 		"`ssh-add ~/.ssh/id_ed25519` (or your preferred key)"}
 }
 
+// checkGPGAgent uses the same discovery chain as `dev up`
+// (gpgconf --list-dirs → $XDG_RUNTIME_DIR/gnupg/ → ~/.gnupg/) so a PASS
+// here means the same socket will be forwarded at container-up time. A
+// missing socket is a WARN, not a FAIL: hosts without gpg still work,
+// they just lose commit signing inside the container.
 func checkGPGAgent() result {
-	xdg := os.Getenv("XDG_RUNTIME_DIR")
-	if xdg == "" {
-		return result{"gpg-agent", warn,
-			"XDG_RUNTIME_DIR not set",
-			"ensure you're logged in via a systemd --user session"}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return result{"gpg-agent", warn, "cannot resolve $HOME", ""}
 	}
-	sock := filepath.Join(xdg, "gnupg", "S.gpg-agent")
-	if _, err := os.Stat(sock); err != nil {
+	creds := hostenv.Discover(home)
+	if creds.GPGAgentSock == "" {
 		return result{"gpg-agent", warn,
-			"socket " + sock + " not found",
-			"`gpgconf --launch gpg-agent`"}
+			"no gpg-agent socket found (checked gpgconf, $XDG_RUNTIME_DIR/gnupg, ~/.gnupg)",
+			"`gpgconf --launch gpg-agent`, or install gnupg if it isn't on this host"}
 	}
-	return result{"gpg-agent", pass, sock, ""}
+	return result{"gpg-agent", pass, creds.GPGAgentSock, ""}
+}
+
+// checkKeyboxd verifies that if the host enables gpg's keyboxd daemon
+// (use-keyboxd in common.conf, gpg 2.3+), the socket is actually
+// reachable. Without this, in-container gpg with common.conf mounted
+// will look for a socket the container can't find and report no keys.
+// Missing use-keyboxd is not a problem — gpg just reads pubring.kbx
+// directly — so we only flag the inconsistent case.
+func checkKeyboxd() result {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return result{"gpg keyboxd", warn, "cannot resolve $HOME", ""}
+	}
+	creds := hostenv.Discover(home)
+
+	// Does common.conf say to use keyboxd?
+	var useKeyboxd bool
+	if creds.GPGCommonConf != "" {
+		if data, err := os.ReadFile(creds.GPGCommonConf); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "#") || trimmed == "" {
+					continue
+				}
+				if strings.HasPrefix(trimmed, "use-keyboxd") {
+					useKeyboxd = true
+					break
+				}
+			}
+		}
+	}
+
+	switch {
+	case useKeyboxd && creds.KeyboxdSock != "":
+		return result{"gpg keyboxd", pass,
+			"use-keyboxd + socket " + creds.KeyboxdSock, ""}
+	case useKeyboxd && creds.KeyboxdSock == "":
+		return result{"gpg keyboxd", fail,
+			"common.conf enables use-keyboxd but no S.keyboxd socket is reachable",
+			"`gpgconf --launch keyboxd` (or remove `use-keyboxd` from common.conf)"}
+	case !useKeyboxd && creds.KeyboxdSock != "":
+		return result{"gpg keyboxd", pass,
+			"socket available (not enabled in common.conf)", ""}
+	default:
+		return result{"gpg keyboxd", pass, "not in use on this host", ""}
+	}
+}
+
+// printForwardSummary writes a one-block summary of what `dev up` will
+// bind-mount into the container, based on the same hostenv discovery
+// the override renderer uses. Non-fatal — purely informational output.
+// It answers the question "what credentials will I actually have inside
+// the container?" without requiring the user to bring a stack up first.
+func printForwardSummary(w io.Writer) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	c := hostenv.Discover(home)
+
+	// (label, host path, missing-explanation) — missing-explanation is
+	// only used when the host path is empty. Keep order aligned with
+	// override.buildMounts so the two are easy to diff mentally.
+	rows := []struct {
+		label   string
+		path    string
+		missing string
+	}{
+		{"ssh-agent socket", c.SSHAgentSock, "no agent on host"},
+		{"gpg-agent socket", c.GPGAgentSock, "gpg not installed / agent not running"},
+		{"keyboxd socket", c.KeyboxdSock, "not used on this host"},
+		{"gpg common.conf", c.GPGCommonConf, "no ~/.gnupg/common.conf"},
+		{"gpg keybox dir", c.GPGKeyboxDir, "no ~/.gnupg/public-keys.d (legacy host?)"},
+		{"gpg pubring.kbx", c.GPGPubringKbx, "no ~/.gnupg/pubring.kbx (gpg 2.1+ is fine)"},
+		{"gpg trustdb", c.GPGTrustdb, "no ~/.gnupg/trustdb.gpg"},
+		{"gitconfig", c.GitConfig, "no ~/.gitconfig"},
+		{"gh config", c.GHConfig, "no ~/.config/gh"},
+		{"claude settings", c.ClaudeSettings, "no ~/.claude/settings.json (preflight creates this)"},
+		{"claude CLAUDE.md", c.ClaudeMd, "no ~/.claude/CLAUDE.md (preflight creates this)"},
+		{"claude agents", c.ClaudeAgents, "no ~/.claude/agents (preflight creates this)"},
+	}
+
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "forwarded into container (`dev up` override):")
+	for _, r := range rows {
+		if r.path != "" {
+			fmt.Fprintf(w, "  + %-18s %s\n", r.label, r.path)
+		} else {
+			fmt.Fprintf(w, "  - %-18s (%s)\n", r.label, r.missing)
+		}
+	}
 }
 
 func checkUID() result {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,19 @@ import (
 
 	"github.com/necrogami/devtools/internal/testutil"
 )
+
+// clearAgentEnv zeroes out env + PATH so hostenv.Discover can't latch
+// onto a real gpg-agent / gpgconf on the test host. Returns the
+// isolated $HOME path so tests can seed specific files under it.
+func clearAgentEnv(t *testing.T) string {
+	t.Helper()
+	home := testutil.WithFakeHome(t)
+	t.Setenv("SSH_AUTH_SOCK", "")
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	// Directory with nothing in it — gpgconf and similar won't resolve.
+	t.Setenv("PATH", filepath.Join(home, ".no-such-bin"))
+	return home
+}
 
 func TestCheckDockerDaemon(t *testing.T) {
 	testutil.WithFakeDocker(t, `
@@ -76,29 +90,145 @@ func TestCheckSSHAgentMissingSocket(t *testing.T) {
 }
 
 func TestCheckGPGAgentMissing(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_RUNTIME_DIR", dir)
-	// don't create gnupg/S.gpg-agent
+	clearAgentEnv(t)
 	r := checkGPGAgent()
 	if r.lvl != warn {
-		t.Errorf("expected warn, got %v", r.lvl)
+		t.Errorf("expected warn, got %v: %s", r.lvl, r.msg)
+	}
+	if !strings.Contains(r.msg, "gpgconf") {
+		t.Errorf("missing-gpg message should cite the discovery chain: %s", r.msg)
 	}
 }
 
-func TestCheckGPGAgentPresent(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_RUNTIME_DIR", dir)
-	sock := filepath.Join(dir, "gnupg", "S.gpg-agent")
-	if err := os.MkdirAll(filepath.Dir(sock), 0o700); err != nil {
+func TestCheckGPGAgentPresentViaXDG(t *testing.T) {
+	home := clearAgentEnv(t)
+	// Place the socket under a fake XDG dir and re-set the env so
+	// hostenv.discoverGPGAgent picks it up through its XDG fallback.
+	xdg := filepath.Join(home, "run")
+	if err := os.MkdirAll(filepath.Join(xdg, "gnupg"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	// Regular file stands in for a socket; check only looks at Stat.
+	sock := filepath.Join(xdg, "gnupg", "S.gpg-agent")
 	if err := os.WriteFile(sock, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("XDG_RUNTIME_DIR", xdg)
+
 	r := checkGPGAgent()
 	if r.lvl != pass {
 		t.Errorf("expected pass, got %v: %s", r.lvl, r.msg)
+	}
+	if r.msg != sock {
+		t.Errorf("expected message to be the socket path %q, got %q", sock, r.msg)
+	}
+}
+
+func TestCheckKeyboxdNotInUse(t *testing.T) {
+	clearAgentEnv(t)
+	r := checkKeyboxd()
+	if r.lvl != pass {
+		t.Errorf("expected pass when keyboxd not configured, got %v: %s", r.lvl, r.msg)
+	}
+	if !strings.Contains(r.msg, "not in use") {
+		t.Errorf("message should describe keyboxd as unused: %s", r.msg)
+	}
+}
+
+func TestCheckKeyboxdConfiguredButNoSocket(t *testing.T) {
+	home := clearAgentEnv(t)
+	// use-keyboxd in common.conf but no socket anywhere → should FAIL.
+	gpgHome := filepath.Join(home, ".gnupg")
+	if err := os.MkdirAll(gpgHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gpgHome, "common.conf"),
+		[]byte("# comment\nuse-keyboxd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := checkKeyboxd()
+	if r.lvl != fail {
+		t.Errorf("expected fail when use-keyboxd set but socket absent, got %v: %s", r.lvl, r.msg)
+	}
+	if !strings.Contains(r.msg, "use-keyboxd") {
+		t.Errorf("message should cite use-keyboxd: %s", r.msg)
+	}
+}
+
+func TestCheckKeyboxdFullyConfigured(t *testing.T) {
+	home := clearAgentEnv(t)
+	// common.conf + socket present → PASS.
+	gpgHome := filepath.Join(home, ".gnupg")
+	if err := os.MkdirAll(gpgHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gpgHome, "common.conf"),
+		[]byte("use-keyboxd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	xdg := filepath.Join(home, "run")
+	if err := os.MkdirAll(filepath.Join(xdg, "gnupg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(xdg, "gnupg", "S.keyboxd")
+	if err := os.WriteFile(sock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_RUNTIME_DIR", xdg)
+
+	r := checkKeyboxd()
+	if r.lvl != pass {
+		t.Errorf("expected pass, got %v: %s", r.lvl, r.msg)
+	}
+	if !strings.Contains(r.msg, "use-keyboxd") {
+		t.Errorf("message should cite use-keyboxd: %s", r.msg)
+	}
+}
+
+func TestCheckKeyboxdCommentedOut(t *testing.T) {
+	// common.conf that only comments-mentions keyboxd should not trip
+	// the "use-keyboxd configured" branch.
+	home := clearAgentEnv(t)
+	gpgHome := filepath.Join(home, ".gnupg")
+	if err := os.MkdirAll(gpgHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gpgHome, "common.conf"),
+		[]byte("# use-keyboxd  (disabled)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := checkKeyboxd()
+	if r.lvl != pass {
+		t.Errorf("commented-out use-keyboxd should not fail, got %v: %s", r.lvl, r.msg)
+	}
+}
+
+func TestPrintForwardSummaryListsMissingAndPresent(t *testing.T) {
+	home := clearAgentEnv(t)
+	// Seed only gitconfig to prove a single + line appears and the rest
+	// render as - lines with explanations.
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	printForwardSummary(&buf)
+	s := buf.String()
+
+	if !strings.Contains(s, "forwarded into container") {
+		t.Errorf("summary header missing:\n%s", s)
+	}
+	if !strings.Contains(s, "+ gitconfig") {
+		t.Errorf("gitconfig should appear as present (+):\n%s", s)
+	}
+	if !strings.Contains(s, "- ssh-agent socket") {
+		t.Errorf("ssh-agent should appear as missing (-):\n%s", s)
+	}
+	if !strings.Contains(s, "- gpg-agent socket") {
+		t.Errorf("gpg-agent should appear as missing (-):\n%s", s)
+	}
+	if !strings.Contains(s, "no agent on host") {
+		t.Errorf("missing-ssh explanation should be inline:\n%s", s)
 	}
 }
 
