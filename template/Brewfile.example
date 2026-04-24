@@ -1,0 +1,25 @@
+# Rename to `Brewfile` and commit with your project. On every `dev up`, the
+# entrypoint runs `brew bundle install --file=/code/Brewfile` in the
+# background — formulae already present are no-ops, so it's safe to re-run.
+#
+# Syntax reference: https://docs.brew.sh/Brew-Bundle-and-Brewfile
+#
+# Examples (uncomment and adapt):
+#
+# brew "php"               # latest stable PHP with the sane default extensions
+# brew "php@8.4"            # specific minor version
+# brew "mysql-client"
+# brew "postgresql@17"
+# brew "redis"
+# brew "imagemagick"
+# brew "ffmpeg"
+# brew "node"
+# brew "python@3.13"
+# brew "go"
+# brew "rust"
+# brew "terraform"
+# brew "kubernetes-cli"
+#
+# Tap an external formula repository:
+# tap "some-org/custom"
+# brew "some-org/custom/tool"

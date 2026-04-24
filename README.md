@@ -2,7 +2,7 @@
 
 > Pre-baked Docker toolbox image + per-project isolated compose stacks, orchestrated by a Go CLI (`dev`).
 
-A personal **developer-host** system: run one SSH connection to a remote box, `docker exec` into any project's tools container, and find every tool you need already configured — bash + oh-my-posh, mise-managed runtimes (PHP/Go/Node/Rust/Python/...), Claude Code, git, gh, db clients, and more. Projects stay isolated from each other by design; download caches stay shared so spinning up a new project is fast.
+A personal **developer-host** system: run one SSH connection to a remote box, `docker exec` into any project's tools container, and find every tool you need already configured — bash + oh-my-posh, Claude Code, git, gh, db clients, and more. Language runtimes and project-specific libraries install on demand via a `Brewfile` at `/code/Brewfile` (Homebrew). Projects stay isolated from each other by design; the Homebrew cellar and download caches stay shared so spinning up a new project is fast.
 
 [![build-image](https://github.com/necrogami/devtools/actions/workflows/build-image.yml/badge.svg)](https://github.com/necrogami/devtools/actions/workflows/build-image.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
@@ -16,7 +16,7 @@ Running many unrelated projects on one host gets messy: Node version conflicts, 
 `devtools` gives each project its own sealed world:
 
 - **Separate code volume**, separate home volume, separate network — a compromised project container can't see the others' source, shell history, or running services.
-- **Shared download caches** (mise, composer, npm, pnpm, cargo, go-mod, pip) mean first-run doesn't re-download every runtime and dependency.
+- **Shared Homebrew cellar + download caches** (brew, composer, npm, pnpm, cargo, go-mod, pip) mean first-run doesn't re-install every formula or re-download every dependency.
 - **Agent-socket credential forwarding** — your SSH and GPG keys stay on the host; containers get sockets, never keyfiles.
 - **One image, one CLI** — update the toolbox once; every project picks it up by pinning a date tag.
 
@@ -41,7 +41,7 @@ Add `~/.local/bin` to your `$PATH` if it isn't already.
 ```bash
 git clone git@github.com:necrogami/devtools.git ~/devtools
 cd ~/devtools
-dev init-shared    # creates 10 named volumes (7 caches + 3 Claude), seeds Claude from ~/.claude
+dev init-shared    # creates 10 named volumes (brew cellar + 6 caches + 3 Claude), seeds Claude from ~/.claude
 ```
 
 ### 3. Pull (or build) the base image
@@ -104,19 +104,18 @@ devtools/
 ├── base/                      The main image
 │   ├── Dockerfile             debian:trixie-slim, multi-arch
 │   ├── entrypoint.sh          Seeds $HOME from /etc/skel, wires agent sockets,
-│   │                          kicks off mise install for project runtimes
+│   │                          runs `brew bundle install` if /code/Brewfile exists
 │   ├── skel/                  Default dotfiles copied into first-start $HOME
 │   │   ├── .bashrc
 │   │   ├── .bash_aliases
 │   │   ├── .inputrc
-│   │   ├── .tmux.conf
-│   │   └── .config/mise/config.toml
-│   ├── install/               Split-stage install scripts (apt → mise → CLI → AI)
-│   └── smoke-test.sh          CI post-build sanity check (19 tools verified)
+│   │   └── .tmux.conf
+│   ├── install/               Split-stage install scripts (apt → brew → CLI → AI)
+│   └── smoke-test.sh          CI post-build sanity check
 ├── template/                  Scaffold for `dev new`
 │   ├── docker-compose.yml
 │   ├── .env.example           Rendered → projects/<name>/.env
-│   ├── .mise.toml.example     Rendered → projects/<name>/.mise.toml
+│   ├── Brewfile.example       Rendered → projects/<name>/Brewfile
 │   └── README.md
 ├── projects/                  Your real project stacks (gitignored)
 ├── shared/init-volumes.sh     Portable fallback for creating shared volumes
@@ -137,20 +136,20 @@ See [`SPEC.md`](./SPEC.md) for the full design document.
 
 | Layer | Contents | Cache behavior |
 |---|---|---|
-| 1 | apt packages (shell, build deps, db clients, vim-nox, tmux) | Rarely changes |
-| 2 | `mise` runtime manager | Monthly-ish |
-| 3 | Modern CLI tools (yq, oh-my-posh, gh) | Weekly-ish |
+| 1 | apt packages (shell, interactive CLI tools, locale) — no language -dev libs | Rarely changes |
+| 2 | Homebrew (Linuxbrew) prefix + pre-warmed taps | Monthly-ish |
+| 3 | Modern CLI tools (yq, oh-my-posh, gh) + system shell init | Weekly-ish |
 | 4 | Claude Code native binary | Most churn — stays on top |
 
-Rebuilding because Claude Code ships a new version only touches ~30MB of the 456MiB image.
+The base image ships without PHP/Python/Ruby/Node/etc. — projects declare what they need via a `Brewfile` at `/code/Brewfile` and brew installs it on first `dev up`. The shared `devtools_brew` volume means formulae are installed once per host and reused.
 
 ### Per-project isolation
 
 Each project gets its own compose stack with its own networks and volumes:
 
 - `code:/code` — per-project, never shared
-- `home:/home/dev` — per-project shell history, mise project-level config, installed plugins
-- `devtools_mise:/home/dev/.local/share/mise` — **shared across projects**
+- `home:/home/dev` — per-project shell history, dotfiles, installed plugins
+- `devtools_brew:/home/linuxbrew/.linuxbrew` — **shared Homebrew cellar** (formulae installed once per host, reused by every project)
 - `devtools_{composer,npm,pnpm,cargo,gomod,pip}` — **shared download caches**
 - `devtools_claude_{plugins,skills,commands}` — **shared "install once, use everywhere"**
 
@@ -189,18 +188,22 @@ That means `dev up` works on hosts without an ssh-agent, without gpg installed, 
 
 ## Customization
 
-### Adding runtimes to a project
+### Adding runtimes + libraries to a project
 
-Drop a `.mise.toml` inside `/code` in the container (or commit it to the project's git repo):
+Drop a `Brewfile` at `/code/Brewfile` (start from `Brewfile.example` in the scaffolded project):
 
-```toml
-[tools]
-php  = "8.3"
-node = "22"
-go   = "1.25"
+```ruby
+brew "php"
+brew "php-tidy"
+brew "mysql-client"
+brew "imagemagick"
+brew "ffmpeg"
+brew "node"
+brew "python@3.13"
+brew "go"
 ```
 
-The entrypoint runs `mise install` in the background on every container start. Subsequent shells pick the runtimes up via `$PATH`.
+The entrypoint runs `brew bundle install --file=/code/Brewfile` in the background on every container start. Formulae already present are no-ops; the `devtools_brew` shared volume means an install from project A is already warm for project B. Subsequent shells pick everything up via `$PATH` (Homebrew's `bin` is in `PATH` by default).
 
 ### Adding services
 

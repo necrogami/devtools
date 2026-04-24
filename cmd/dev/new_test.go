@@ -13,10 +13,10 @@ import (
 func seedTemplate(t *testing.T, root string) {
 	t.Helper()
 	files := map[string]string{
-		"docker-compose.yml":  "name: {{.Project}}\nservices:\n  tools: {}\n",
-		".env.example":        "PROJECT={{.Project}}\nDEVTOOLS_TAG={{.DevtoolsTag}}\n",
-		".mise.toml.example":  "# mise config for {{.Project}}\n",
-		"README.md":           "# {{.Project}}\n",
+		"docker-compose.yml": "name: {{.Project}}\nservices:\n  tools: {}\n",
+		".env.example":       "PROJECT={{.Project}}\nDEVTOOLS_TAG={{.DevtoolsTag}}\n",
+		"Brewfile.example":   "# Brewfile for {{.Project}}\n",
+		"README.md":          "# {{.Project}}\n",
 	}
 	for rel, content := range files {
 		p := filepath.Join(root, "template", rel)
@@ -41,7 +41,7 @@ func TestNewCmdScaffoldsProject(t *testing.T) {
 	}
 
 	projDir := filepath.Join(root, "projects", "myproj")
-	for _, rel := range []string{"docker-compose.yml", ".env", ".mise.toml", "README.md", ".gitignore"} {
+	for _, rel := range []string{"docker-compose.yml", ".env", "Brewfile", "README.md", ".gitignore"} {
 		if _, err := os.Stat(filepath.Join(projDir, rel)); err != nil {
 			t.Errorf("missing generated file %s: %v", rel, err)
 		}

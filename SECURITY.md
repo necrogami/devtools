@@ -37,7 +37,7 @@ In scope:
 
 Out of scope:
 
-- Vulnerabilities in third-party tools baked into the image (PHP, mise runtimes, Claude Code, etc.) — please file those with the respective upstream projects.
+- Vulnerabilities in third-party tools installed inside the container at runtime (any Homebrew formula, Claude Code, etc.) — please file those with the respective upstream projects.
 - Social engineering of project maintainers.
 - Denial-of-service issues that require pre-existing privileged local access.
 

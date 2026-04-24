@@ -1,12 +1,17 @@
 # Project stack template — copied by `dev new <name>` into projects/<name>/.
 #
-# This file is the portable, host-agnostic half of the stack: per-project
-# volumes and shared cache / Claude volumes that look the same on every
-# host. The host-specific bits (ssh-agent socket, gpg-agent socket, gpg
-# keybox, gitconfig, gh config, Claude personalization) live in an
-# auto-generated docker-compose.override.yml that `dev up` writes each
-# run after discovering what's available on the current host. That
-# override is .gitignored and safe to delete — `dev up` rewrites it.
+# This file is the portable, host-agnostic half of the stack. Per-project
+# volumes, the tools service definition, and shared cache volumes look the
+# same on every host. The host-specific bits (ssh-agent socket, gpg-agent
+# socket, keyboxd, gpg keybox, gitconfig, gh config, Claude personalization)
+# live in an auto-generated docker-compose.override.yml that `dev up`
+# writes each run after discovering what's available. That override is
+# .gitignored and safe to delete — `dev up` rewrites it.
+#
+# Library & runtime installs happen at container start via Homebrew. Drop
+# a `Brewfile` at /code/Brewfile (committed with the project) to declare
+# what the project needs. The entrypoint runs `brew bundle install` on it
+# every `dev up`; brew is idempotent, so re-runs are cheap.
 #
 # Commit this file; never commit docker-compose.override.yml or .env.
 
@@ -29,8 +34,12 @@ services:
       # ----- per-project (strong isolation) --------------------------------
       - code:/code
       - home:/home/dev
+      # ----- shared Homebrew prefix ----------------------------------------
+      # Pins all formulae installed by any project to this volume so the
+      # cellar is shared (first project to `brew install php` warms it for
+      # all the others).
+      - devtools_brew:/home/linuxbrew/.linuxbrew
       # ----- shared download caches (created by `dev init-shared`) ---------
-      - devtools_mise:/home/dev/.local/share/mise
       - devtools_composer:/home/dev/.composer/cache
       - devtools_npm:/home/dev/.npm
       - devtools_pnpm:/home/dev/.local/share/pnpm/store
@@ -73,7 +82,7 @@ volumes:
   home:
   # db-data:
   # redis-data:
-  devtools_mise:            { external: true }
+  devtools_brew:            { external: true }
   devtools_composer:        { external: true }
   devtools_npm:             { external: true }
   devtools_pnpm:            { external: true }

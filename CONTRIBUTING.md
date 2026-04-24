@@ -100,7 +100,7 @@ DEVTOOLS_INTEGRATION=1 go test -tags integration ./cmd/dev
 3. Run `./base/smoke-test.sh devtools:local`.
 4. Push the change — CI rebuilds multi-arch and pushes to GHCR.
 
-Keep layer discipline in mind: put slow-churn things (apt, mise) first; fast-churn things (Claude Code) last.
+Keep layer discipline in mind: put slow-churn things (apt, Homebrew prefix) first; fast-churn things (Claude Code) last.
 
 ## Modifying the project template
 

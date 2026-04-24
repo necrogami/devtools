@@ -4,8 +4,8 @@
 # Responsibilities, in order:
 #   1. Seed $HOME from /etc/skel if this is a fresh volume
 #   2. Wire SSH agent socket (if mounted)
-#   3. Wire GPG agent socket (if mounted) — public keyring comes in read-only
-#   4. Kick off mise install for any project-declared runtimes (non-blocking)
+#   3. Wire GPG agent + keyboxd sockets (if mounted)
+#   4. If /code/Brewfile exists, run `brew bundle install` (non-blocking)
 #   5. Hand off to the requested command (default: bash -l)
 set -euo pipefail
 
@@ -38,10 +38,18 @@ if [ -S /run/host/keyboxd ]; then
     ln -sfn /run/host/keyboxd "$HOME/.gnupg/S.keyboxd"
 fi
 
-# --- 4. Project runtime install (non-blocking, best-effort) ------------------
-# Only runs when /code contains a mise config; keeps first-start UX snappy.
-if [ -x /usr/local/bin/mise ] && { [ -f /code/.mise.toml ] || [ -f /code/.tool-versions ]; }; then
-    ( cd /code && /usr/local/bin/mise install >/dev/null 2>&1 & ) || true
+# --- 4. Project Brewfile (non-blocking, best-effort) -------------------------
+# If the mounted project has a Brewfile at /code/Brewfile, kick off
+# `brew bundle install` in the background. Brew handles its own
+# idempotence (formulae already present are no-ops), so re-running is
+# cheap, and running in the background keeps first-shell latency low.
+# The shared devtools_brew volume (mounted at $HOMEBREW_PREFIX) means any
+# formulae installed here benefit every other project on this host too.
+if [ -f /code/Brewfile ] && command -v brew >/dev/null 2>&1; then
+    ( brew bundle install --file=/code/Brewfile >/tmp/brew-bundle.log 2>&1 \
+        && echo "devtools: brew bundle install complete" >> /tmp/brew-bundle.log \
+        || echo "devtools: brew bundle install FAILED — see /tmp/brew-bundle.log" >&2
+    ) &
 fi
 
 # --- 5. Hand off -------------------------------------------------------------

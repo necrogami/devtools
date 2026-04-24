@@ -31,11 +31,12 @@ fi
 # ----- PATH -------------------------------------------------------------------
 export PATH="$HOME/.local/bin:$PATH"
 
-# NOTE: mise activation, the oh-my-posh prompt, and fzf key-bindings are all
-# wired up system-wide via /etc/profile.d/devtools-shell.sh (sourced by
-# /etc/bash.bashrc for non-login interactive shells and by /etc/profile for
-# login shells). Keeping them out of this file means upgrades to the init
-# never require users to diff or re-seed their ~/.bashrc.
+# NOTE: the oh-my-posh prompt, fzf key-bindings, and Homebrew shellenv are
+# all wired up system-wide via /etc/profile.d/ (devtools-shell.sh +
+# brew.sh), sourced by /etc/bash.bashrc for non-login interactive shells
+# and by /etc/profile for login shells. Keeping them out of this file
+# means upgrades to the init never require users to diff or re-seed their
+# ~/.bashrc.
 
 # ----- aliases ----------------------------------------------------------------
 [ -f "$HOME/.bash_aliases" ] && . "$HOME/.bash_aliases"

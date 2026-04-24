@@ -31,17 +31,17 @@ func TestRenderSubstitutesVars(t *testing.T) {
 
 func TestRenderStripsExampleSuffix(t *testing.T) {
 	srcDir := t.TempDir()
-	writeSrc(t, srcDir, ".mise.toml.example", "# mise config")
+	writeSrc(t, srcDir, "Brewfile.example", "# brew deps")
 
 	dstDir := filepath.Join(t.TempDir(), "dst")
 	if err := Render(srcDir, dstDir, Vars{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dstDir, ".mise.toml")); err != nil {
-		t.Fatal("expected .mise.toml (suffix stripped), but it's missing")
+	if _, err := os.Stat(filepath.Join(dstDir, "Brewfile")); err != nil {
+		t.Fatal("expected Brewfile (suffix stripped), but it's missing")
 	}
-	if _, err := os.Stat(filepath.Join(dstDir, ".mise.toml.example")); err == nil {
-		t.Fatal("unstripped .mise.toml.example should not exist")
+	if _, err := os.Stat(filepath.Join(dstDir, "Brewfile.example")); err == nil {
+		t.Fatal("unstripped Brewfile.example should not exist")
 	}
 }
 
@@ -87,13 +87,13 @@ func TestRenderFailsOnMalformedTemplate(t *testing.T) {
 
 func TestRenderPreservesDirStructure(t *testing.T) {
 	srcDir := t.TempDir()
-	writeSrc(t, srcDir, filepath.Join(".config", "mise", "config.toml"), "[settings]\n")
+	writeSrc(t, srcDir, filepath.Join(".config", "gh", "config.yml"), "hosts: {}\n")
 
 	dstDir := filepath.Join(t.TempDir(), "dst")
 	if err := Render(srcDir, dstDir, Vars{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dstDir, ".config", "mise", "config.toml")); err != nil {
+	if _, err := os.Stat(filepath.Join(dstDir, ".config", "gh", "config.yml")); err != nil {
 		t.Fatalf("expected nested file preserved: %v", err)
 	}
 }
@@ -126,12 +126,12 @@ func TestRenderPreservesFilePermissions(t *testing.T) {
 
 func TestStripExampleSuffix(t *testing.T) {
 	cases := map[string]string{
-		".env.example":        ".env",
-		".mise.toml.example":  ".mise.toml",
-		"README.md":           "README.md", // unchanged
-		"plain":               "plain",     // unchanged
-		"foo.bar.example":     "foo.bar",
-		"ends-with.example":   "ends-with",
+		".env.example":      ".env",
+		"Brewfile.example":  "Brewfile",
+		"README.md":         "README.md", // unchanged
+		"plain":             "plain",     // unchanged
+		"foo.bar.example":   "foo.bar",
+		"ends-with.example": "ends-with",
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {

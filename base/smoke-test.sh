@@ -15,7 +15,7 @@ echo ">>> smoke-testing: $IMAGE"
 docker run --rm --entrypoint /bin/bash "$IMAGE" -lc '
 set -e
 tools=(
-    bash git gh mise claude
+    bash git gh brew claude
     curl wget ssh gpg jq yq
     rg fd bat fzf eza
     oh-my-posh tmux vim

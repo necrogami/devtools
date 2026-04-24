@@ -1,43 +1,39 @@
 #!/usr/bin/env bash
-# 10-apt.sh — system packages + mise compile deps + db clients.
+# 10-apt.sh — minimal system packages for the devtools base image.
+#
+# This layer is intentionally slim: everything runtime/library-related that
+# projects actually need (PHP extensions, Python build deps, DB client libs,
+# etc.) is installed at container-start time via Homebrew (see 20-brew.sh
+# and the entrypoint's `brew bundle install` step). Keeping this layer tiny
+# means a faster `docker pull` and a smaller delta when Debian base updates.
 set -euo pipefail
 
 apt-get update
 
-# Split into groups for readability / easier auditing.
+# Things every interactive dev shell wants, and the pieces brew itself needs
+# to bootstrap (curl, git, build-essential for source-only formulae).
 BASE_PKGS=(
     ca-certificates curl wget gnupg openssh-client
-    git unzip less sudo locales tzdata
+    git build-essential file
+    unzip xz-utils zstd
+    less sudo locales tzdata
     bash-completion tmux vim-nox nano
-    procps iproute2 dnsutils htop file
-    jq xz-utils zstd
+    procps iproute2 dnsutils htop
+    jq
 )
 
-# CLI tools available in trixie apt (prefer over GH releases when version is fresh).
+# CLI tools available in trixie apt where the packaged version is fresh
+# enough. Everything else (ripgrep, fd, bat, fzf, eza, yq, gh, oh-my-posh)
+# can be `brew install`ed per-project if a project needs newer.
+# We keep the apt versions of these in the base because they're used by
+# interactive shells and should work even if a project has no Brewfile.
 APT_CLI_PKGS=(
     ripgrep fd-find bat fzf eza
 )
 
-# Compile deps so `mise install <lang>@<ver>` can build from source when no
-# prebuilt is available (happens for uncommon PHP/Python/Ruby versions).
-BUILD_DEPS=(
-    build-essential pkg-config autoconf bison
-    libssl-dev libicu-dev libxml2-dev libzip-dev libonig-dev
-    libffi-dev liblzma-dev libyaml-dev libsqlite3-dev libpq-dev
-    libcurl4-openssl-dev libreadline-dev libbz2-dev libncurses-dev
-    libxslt1-dev libpng-dev libjpeg-dev zlib1g-dev libgmp-dev
-)
-
-# Database clients — convenience for connecting into service containers.
-DB_CLIENTS=(
-    mariadb-client postgresql-client redis-tools sqlite3
-)
-
 apt-get install -y --no-install-recommends \
     "${BASE_PKGS[@]}" \
-    "${APT_CLI_PKGS[@]}" \
-    "${BUILD_DEPS[@]}" \
-    "${DB_CLIENTS[@]}"
+    "${APT_CLI_PKGS[@]}"
 
 # Locale generation — oh-my-posh and many tools render better with UTF-8.
 sed -i '/^# *en_US.UTF-8 UTF-8/s/^# *//' /etc/locale.gen

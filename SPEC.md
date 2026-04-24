@@ -8,7 +8,7 @@
 
 ## 1. Goal
 
-A personal "developer-host" system that lets a single remote server (or laptop) run many mutually-isolated project stacks from one shared, pre-baked toolbox image. SSH into the host, pick a project, `docker exec` into its tools container, and everything you need (claude, mise-managed runtimes, git, gh, build tools) is already there. Cross-project code visibility is prevented; cross-project dependency downloads are cached.
+A personal "developer-host" system that lets a single remote server (or laptop) run many mutually-isolated project stacks from one shared, pre-baked toolbox image. SSH into the host, pick a project, `docker exec` into its tools container, and everything you need (claude, git, gh, shell tooling) is already there. Language runtimes and project-specific libraries install on demand via `Brewfile` (Homebrew), with a shared cellar across projects. Cross-project code visibility is prevented; cross-project downloads are cached.
 
 ## 2. Non-Goals
 
@@ -36,7 +36,7 @@ laptop ──ssh──► remote host
                  │    ├── leadsrx-db
                  │    └── ...isolated...
                  │
-                 └── shared volumes: devtools_mise, devtools_composer,
+                 └── shared volumes: devtools_brew, devtools_composer,
                                      devtools_npm, devtools_pnpm,
                                      devtools_cargo, devtools_gomod,
                                      devtools_pip
@@ -50,7 +50,7 @@ laptop ──ssh──► remote host
 | Isolation unit | Per-project container + per-project volumes | Strong security boundary between divergent projects |
 | Code storage | Named Docker volume, not host bind-mount | Reduces container→host filesystem escape surface |
 | Credential model | Agent socket forwarding (SSH & GPG) | Private keys never enter any container |
-| Runtime version mgmt | `mise` with per-project `.mise.toml` | Per-project version pinning without image variants |
+| Runtime + library mgmt | Homebrew (Linuxbrew) with per-project `Brewfile` | Precompiled formulae, brew owns both runtime + its library deps |
 | Base OS | `debian:trixie-slim` (Debian 13, current stable) | glibc, broadest PHP/Rust/Node compat, small |
 | Architectures | `linux/amd64` + `linux/arm64` | Mac (M-series) + amd64 remote servers |
 | UID/GID strategy | Build-arg `UID`/`GID` (default 1000) | Match host agent-socket ownership |
@@ -70,18 +70,17 @@ devtools/
 │   │   ├── .bashrc
 │   │   ├── .bash_aliases
 │   │   ├── .inputrc
-│   │   ├── tmux.conf
-│   │   ├── .config/oh-my-posh/atomic.omp.json   # pinned copy; fallback if $POSH_THEMES_PATH absent
-│   │   └── .config/mise/config.toml
+│   │   ├── .tmux.conf
+│   │   └── .config/oh-my-posh/atomic.omp.json   # pinned copy; fallback if $POSH_THEMES_PATH absent
 │   └── install/                # split-stage install scripts
 │       ├── 10-apt.sh
-│       ├── 20-mise.sh
+│       ├── 20-brew.sh
 │       ├── 30-cli-tools.sh
 │       └── 40-ai-tools.sh
 ├── template/                   # copied to `projects/<name>/` by `dev new`
 │   ├── docker-compose.yml
 │   ├── .env.example
-│   ├── .mise.toml.example
+│   ├── Brewfile.example
 │   └── README.md
 ├── projects/                   # gitignored — your real project stacks
 │   └── .gitkeep
@@ -142,8 +141,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 COPY base/install/10-apt.sh /tmp/
 RUN /tmp/10-apt.sh
 
-COPY base/install/20-mise.sh /tmp/
-RUN /tmp/20-mise.sh
+COPY base/install/20-brew.sh /tmp/
+RUN /tmp/20-brew.sh
 
 COPY base/install/30-cli-tools.sh /tmp/
 RUN /tmp/30-cli-tools.sh
@@ -166,9 +165,9 @@ CMD ["bash", "-l"]
 
 ### 6.2 Install scripts (summary)
 
-- **`10-apt.sh`** — ca-certificates, curl, wget, git, gnupg, openssh-client, unzip, less, bash-completion, tmux, sudo, locales, procps, iproute2, dnsutils, htop, vim-tiny, jq, **compile deps for mise runtimes**: build-essential, pkg-config, libssl-dev, libicu-dev, libxml2-dev, libzip-dev, libonig-dev, libffi-dev, liblzma-dev, libyaml-dev, libsqlite3-dev, libpq-dev, libcurl4-openssl-dev, libreadline-dev, libbz2-dev, libncurses-dev, libxslt1-dev, libpng-dev, libjpeg-dev, zlib1g-dev, autoconf, bison, **db clients**: mariadb-client, postgresql-client, redis-tools, sqlite3. Locale gen en_US.UTF-8.
-- **`20-mise.sh`** — installs mise via `curl https://mise.run | sh` into `/usr/local/bin/mise`, writes system-wide activation to `/etc/profile.d/mise.sh`. Does NOT install runtimes at build time — runtimes live in the shared `devtools_mise` volume and are installed per-project at first `dev up`.
-- **`30-cli-tools.sh`** — installs from upstream GitHub releases (multi-arch aware): ripgrep, fd-find, bat, fzf, eza, yq, **oh-my-posh** (via `https://ohmyposh.dev/install.sh`, exposes `POSH_THEMES_PATH` at `/usr/local/share/oh-my-posh/themes`), gh (via official apt repo). Script auto-detects `dpkg --print-architecture` to fetch the right binaries. `/etc/skel/.bashrc` wires prompt via `eval "$(oh-my-posh init bash --config "${POSH_THEMES_PATH}/atomic.omp.json")"` with fallback to `$HOME/.config/oh-my-posh/atomic.omp.json` if the env var is unset.
+- **`10-apt.sh`** — the minimum to bootstrap an interactive shell and Homebrew: ca-certificates, curl, wget, gnupg, openssh-client, git, build-essential, file, unzip/xz-utils/zstd, less, sudo, locales, tzdata, bash-completion, tmux, vim-nox, nano, procps/iproute2/dnsutils/htop, jq, plus the apt-packaged interactive tools ripgrep/fd-find/bat/fzf/eza. Locale gen en_US.UTF-8. Deliberately **no** language -dev packages — Homebrew handles those per-project via Brewfile.
+- **`20-brew.sh`** — installs Homebrew (Linuxbrew) into `/home/linuxbrew/.linuxbrew`, owned by a dedicated `linuxbrew` system user. Writes `/etc/profile.d/brew.sh` that sources `brew shellenv` for every login shell. Pre-warms the tap. Runtime installs happen at container-start via the entrypoint's `brew bundle install` against `/code/Brewfile`; the shared `devtools_brew` volume mounts over the prefix so formulae are reused across every project on the host.
+- **`30-cli-tools.sh`** — installs from upstream: yq (mikefarah/yq GitHub release), **oh-my-posh** (via `https://ohmyposh.dev/install.sh`, exposes `POSH_THEMES_PATH` at `/usr/local/share/oh-my-posh/themes`), gh (via official apt repo). Also writes `/etc/profile.d/devtools-shell.sh` — the system-wide interactive-shell init that activates oh-my-posh (with `--print`), sets `XDG_CACHE_HOME`, and wires fzf keybindings. Appends a one-line `source` of it to `/etc/bash.bashrc` so non-login interactive shells (`docker exec -it … bash`) pick it up too.
 - **`40-ai-tools.sh`** — installs Claude Code via Anthropic's official installer (bundles its own runtime; no global node needed in the image). Verifies `claude --version` at end. Codex install left commented as opt-in.
 
 ### 6.3 Entrypoint
@@ -196,9 +195,9 @@ if [ -S /run/host/gpg-agent ]; then
     GPG_TTY=$(tty 2>/dev/null || echo /dev/console)
 fi
 
-# 4. Best-effort install of project-declared runtimes (non-blocking)
-if [ -f /code/.mise.toml ] || [ -f /code/.tool-versions ]; then
-    (cd /code && mise install >/dev/null 2>&1 &) || true
+# 4. Brewfile bundle install (non-blocking, best-effort)
+if [ -f /code/Brewfile ] && command -v brew >/dev/null 2>&1; then
+    ( brew bundle install --file=/code/Brewfile >/tmp/brew-bundle.log 2>&1 & ) || true
 fi
 
 exec "$@"
@@ -251,7 +250,7 @@ Key properties:
 - `image: ghcr.io/necrogami/devtools:${DEVTOOLS_TAG:-latest}`
 - `container_name: ${PROJECT}-tools`
 - Named per-project volumes: `code`, `home`
-- External shared cache volumes: `devtools_mise`, `devtools_composer`, `devtools_npm`, `devtools_pnpm`, `devtools_cargo`, `devtools_gomod`, `devtools_pip`
+- External shared volumes: `devtools_brew` (Homebrew cellar), `devtools_composer`, `devtools_npm`, `devtools_pnpm`, `devtools_cargo`, `devtools_gomod`, `devtools_pip`
 - External shared Claude volumes: `devtools_claude_plugins`, `devtools_claude_skills`, `devtools_claude_commands`
 - Credential mounts as in §7
 - Service stubs commented out: `db` (mariadb), `redis`, `queue` (beanstalkd/rabbit), `mail` (mailpit)
@@ -338,7 +337,7 @@ Each reports PASS / WARN / FAIL with a remediation hint:
 
 - **CLI unit tests** (`go test ./...`): `internal/compose` (bump/validate roundtrips on fixture files), `internal/tmpl` (scaffold output matches golden files), `internal/paths` (name validation, edge cases)
 - **CLI integration tests** (`go test -tags integration`): gated behind `DEVTOOLS_INTEGRATION=1`; exercise `dev new` → `dev up` → `dev exec echo hi` → `dev down` against real Docker daemon; cleanup uses `t.Cleanup` with `docker compose down -v`
-- **Image smoke test** (`base/smoke-test.sh`): invoked in CI after image push; `docker run --rm <image> bash -c 'for t in bash git gh mise claude curl ssh gpg jq rg fd bat fzf oh-my-posh tmux; do command -v "$t" >/dev/null || exit 1; done'` plus version banner for each tool
+- **Image smoke test** (`base/smoke-test.sh`): invoked in CI after image push; `docker run --rm <image> bash -c 'for t in bash git gh brew claude curl ssh gpg jq yq rg fd bat fzf eza oh-my-posh tmux vim; do command -v "$t" >/dev/null || exit 1; done'` plus version banner for each tool
 - **Doctor self-test**: `dev doctor --dry-run` runs each check against a synthetic host state to verify the remediation hints render correctly
 
 ## 12. Security Posture

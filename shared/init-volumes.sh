@@ -7,8 +7,8 @@
 set -euo pipefail
 
 VOLUMES=(
-    # Package-manager download caches.
-    devtools_mise              # mise installs + runtimes
+    # Toolchain + package caches (shared across every project on this host).
+    devtools_brew              # Homebrew prefix (runtimes + libs installed by Brewfile)
     devtools_composer          # composer global cache
     devtools_npm               # npm global cache
     devtools_pnpm              # pnpm content-addressable store

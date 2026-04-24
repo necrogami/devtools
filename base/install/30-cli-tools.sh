@@ -53,12 +53,12 @@ cp "$THEMES_DIR/atomic.omp.json" /etc/skel/.config/oh-my-posh/atomic.omp.json
 #
 # Debian's bash sources /etc/bash.bashrc for interactive non-login shells
 # (what you get from `docker exec -it <container> bash`), and /etc/profile
-# → /etc/profile.d/*.sh for login shells. Putting our mise + oh-my-posh
-# activation in a dedicated /etc/profile.d file and sourcing it from
-# /etc/bash.bashrc covers both, and — crucially — makes the prompt work
-# even when the user's home volume was seeded from an old image whose
-# ~/.bashrc predates these blocks. Without this, stale home volumes keep
-# whatever dotfiles they first got forever.
+# → /etc/profile.d/*.sh for login shells. Putting our oh-my-posh activation
+# in a dedicated /etc/profile.d file and sourcing it from /etc/bash.bashrc
+# covers both, and — crucially — makes the prompt work even when the user's
+# home volume was seeded from an old image whose ~/.bashrc predates these
+# blocks. Without this, stale home volumes keep whatever dotfiles they
+# first got forever.
 # -----------------------------------------------------------------------------
 cat > /etc/profile.d/devtools-shell.sh <<'PROFILE'
 # devtools: interactive-shell init. Sourced by login shells via /etc/profile
@@ -79,11 +79,6 @@ esac
 : "${XDG_CACHE_HOME:=$HOME/.cache}"
 export XDG_CACHE_HOME
 mkdir -p "$XDG_CACHE_HOME" 2>/dev/null || true
-
-# mise — runtime manager. Activate hooks + shims.
-if [ -x /usr/local/bin/mise ]; then
-    eval "$(/usr/local/bin/mise activate bash)"
-fi
 
 # oh-my-posh — Atomic prompt theme. `--print` dumps the full init script
 # inline; without it OMP emits `source $'init.HASH.sh'` with a relative
@@ -110,7 +105,7 @@ chmod 0644 /etc/profile.d/devtools-shell.sh
 if ! grep -q "devtools-shell.sh" /etc/bash.bashrc 2>/dev/null; then
     cat >> /etc/bash.bashrc <<'BBRC'
 
-# devtools: interactive-shell init (mise activation, oh-my-posh prompt, fzf).
+# devtools: interactive-shell init (oh-my-posh prompt, fzf, Homebrew shellenv).
 # This runs *before* ~/.bashrc, so stale home volumes still get the prompt.
 if [ -r /etc/profile.d/devtools-shell.sh ]; then
     . /etc/profile.d/devtools-shell.sh

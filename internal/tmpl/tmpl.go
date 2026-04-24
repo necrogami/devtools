@@ -55,8 +55,8 @@ func Render(srcDir, dstDir string, vars Vars) error {
 	})
 }
 
-// stripExampleSuffix converts ".env.example" → ".env" and ".mise.toml.example"
-// → ".mise.toml" so the rendered project directly picks up its real config.
+// stripExampleSuffix converts ".env.example" → ".env" and "Brewfile.example"
+// → "Brewfile" so the rendered project directly picks up its real config.
 func stripExampleSuffix(path string) string {
 	return strings.TrimSuffix(path, ".example")
 }

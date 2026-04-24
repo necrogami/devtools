@@ -11,10 +11,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// sharedCacheVolumes are package-manager download caches shared across
-// projects to avoid re-downloading runtimes/deps per project.
+// sharedCacheVolumes are package-manager / toolchain caches shared across
+// projects to avoid re-downloading or re-installing per project.
+//
+// devtools_brew holds the Homebrew prefix (/home/linuxbrew/.linuxbrew) so
+// a formula installed for one project is immediately available to every
+// other project on this host. The rest are per-language download caches.
 var sharedCacheVolumes = []string{
-	"devtools_mise",
+	"devtools_brew",
 	"devtools_composer",
 	"devtools_npm",
 	"devtools_pnpm",
