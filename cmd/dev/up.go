@@ -12,7 +12,10 @@ import (
 )
 
 func newUpCmd() *cobra.Command {
-	var detach bool
+	var (
+		detach bool
+		pull   bool
+	)
 	cmd := &cobra.Command{
 		Use:   "up <project>",
 		Short: "Start a project's compose stack",
@@ -33,15 +36,31 @@ func newUpCmd() *cobra.Command {
 			if err := compose.WriteOverride(dir, creds); err != nil {
 				return fmt.Errorf("generate compose override: %w", err)
 			}
+			// `--pull` forces a fresh check against the registry and a
+			// recreate. This is what you need after `dev bump` moves the
+			// tag (or when the tag is floating like `latest` and the
+			// local cache is stale). Without it, docker compose reuses
+			// the locally-cached image for the tag even if the registry
+			// has a newer digest.
+			if pull {
+				if err := runCompose(dir, "pull"); err != nil {
+					return fmt.Errorf("compose pull: %w", err)
+				}
+			}
 			composeArgs := []string{"up"}
 			if detach {
 				composeArgs = append(composeArgs, "-d")
+			}
+			if pull {
+				composeArgs = append(composeArgs, "--force-recreate")
 			}
 			return runCompose(dir, composeArgs...)
 		},
 	}
 	cmd.Flags().BoolVarP(&detach, "detach", "d", true,
 		"run in the background (default)")
+	cmd.Flags().BoolVar(&pull, "pull", false,
+		"pull the latest image from the registry and force-recreate the container")
 	return cmd
 }
 

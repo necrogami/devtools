@@ -36,7 +36,7 @@ func newBumpCmd() *cobra.Command {
 				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(),
-				"%s: %s → %s\n  next: dev up %s\n",
+				"%s: %s → %s\n  next: dev up --pull %s\n",
 				args[0], displayTag(prev), resolved, args[0])
 			return nil
 		},

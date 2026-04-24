@@ -82,7 +82,14 @@ func runUpdate(cmd *cobra.Command, opts runUpdateOpts) error {
 		}
 		target = latest
 	}
-	current := "v" + version // ldflag-injected at build time; "dev" in source builds
+	// GoReleaser injects a `v`-prefixed tag (`v0.3.0`); `git describe`-based
+	// dev builds do the same. Source-tree builds leave it at the literal
+	// "dev". Normalize either form to a "v"-prefixed string so the
+	// current/target comparison below is apples-to-apples.
+	current := version
+	if current != "" && !strings.HasPrefix(current, "v") {
+		current = "v" + current
+	}
 
 	fmt.Fprintf(out, "current: %s\ntarget:  %s\n", current, target)
 
