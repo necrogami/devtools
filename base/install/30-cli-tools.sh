@@ -72,18 +72,29 @@ case $- in
       *) return 0 ;;
 esac
 
+# Ensure XDG_CACHE_HOME exists and points at ~/.cache. Without this
+# oh-my-posh (v29) drops its runtime caches (bash.UUID.omp.cache, omp.cache)
+# into $PWD, polluting every user project directory. Exporting here is
+# early enough that OMP's init below picks it up.
+: "${XDG_CACHE_HOME:=$HOME/.cache}"
+export XDG_CACHE_HOME
+mkdir -p "$XDG_CACHE_HOME" 2>/dev/null || true
+
 # mise — runtime manager. Activate hooks + shims.
 if [ -x /usr/local/bin/mise ]; then
     eval "$(/usr/local/bin/mise activate bash)"
 fi
 
-# oh-my-posh — Atomic prompt theme.
+# oh-my-posh — Atomic prompt theme. `--print` dumps the full init script
+# inline; without it OMP emits `source $'init.HASH.sh'` with a relative
+# path, which makes bash source a temp file that OMP had to write to the
+# user's cwd. Inlining avoids the temp file entirely.
 if command -v oh-my-posh >/dev/null 2>&1; then
     __omp_theme="${POSH_THEMES_PATH:-/usr/local/share/oh-my-posh/themes}/atomic.omp.json"
     [ -f "$__omp_theme" ] || __omp_theme="$HOME/.config/oh-my-posh/atomic.omp.json"
     [ -f "$__omp_theme" ] || __omp_theme="/etc/skel/.config/oh-my-posh/atomic.omp.json"
     if [ -f "$__omp_theme" ]; then
-        eval "$(oh-my-posh init bash --config "$__omp_theme")"
+        eval "$(oh-my-posh init bash --print --config "$__omp_theme")"
     fi
     unset __omp_theme
 fi

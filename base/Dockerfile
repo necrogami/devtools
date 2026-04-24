@@ -71,9 +71,34 @@ RUN groupadd -g ${GID} ${USERNAME} \
  && touch                                       /home/${USERNAME}/.claude/settings.json \
  && touch                                       /home/${USERNAME}/.claude/CLAUDE.md \
  && chown ${USERNAME}:${GID}                    /home/${USERNAME}/.claude/settings.json /home/${USERNAME}/.claude/CLAUDE.md \
+ # `install -d -o X -g Y path/a/b/c` chowns only the leaf (c); intermediates
+ # (path, path/a, path/a/b) get default root:root. Create each level we care
+ # about explicitly so runtime tools (mise writing .local/state/, pip
+ # .cache/, etc.) can actually write inside their XDG dirs.
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/bin \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/share \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/share/mise \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/share/pnpm \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/share/pnpm/store \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/state \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/state/mise \
+ # Shared-volume mount parents. Pre-create these as ${USERNAME}-owned so that
+ # when compose mounts e.g. devtools_pip at /home/dev/.cache/pip, Docker's
+ # auto-created /home/dev/.cache parent inherits our ownership instead of
+ # defaulting to root. Without this, user-level tools (oh-my-posh's runtime
+ # cache, pip cache, etc.) can't write under their expected XDG paths and
+ # either fail silently or fall back to $PWD (polluting /code).
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.cache \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.cache/pip \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.cargo \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.cargo/registry \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.composer \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.composer/cache \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.npm \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/go \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/go/pkg \
+ && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/go/pkg/mod \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /run/host
 
 COPY base/entrypoint.sh /usr/local/bin/entrypoint.sh
