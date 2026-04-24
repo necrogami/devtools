@@ -1,7 +1,14 @@
 # Project stack template — copied by `dev new <name>` into projects/<name>/.
 #
-# Values sourced from the sibling .env file (never committed).
-# Uncomment the service blocks you need; volumes are pre-wired for common cases.
+# This file is the portable, host-agnostic half of the stack: per-project
+# volumes and shared cache / Claude volumes that look the same on every
+# host. The host-specific bits (ssh-agent socket, gpg-agent socket, gpg
+# keybox, gitconfig, gh config, Claude personalization) live in an
+# auto-generated docker-compose.override.yml that `dev up` writes each
+# run after discovering what's available on the current host. That
+# override is .gitignored and safe to delete — `dev up` rewrites it.
+#
+# Commit this file; never commit docker-compose.override.yml or .env.
 
 name: ${PROJECT}
 
@@ -17,7 +24,6 @@ services:
     tty: true
     environment:
       PROJECT: ${PROJECT}
-      SSH_AUTH_SOCK: /run/host/ssh-agent
       # Project-specific env goes in .env.
     volumes:
       # ----- per-project (strong isolation) --------------------------------
@@ -31,17 +37,6 @@ services:
       - devtools_cargo:/home/dev/.cargo/registry
       - devtools_gomod:/home/dev/go/pkg/mod
       - devtools_pip:/home/dev/.cache/pip
-      # ----- credentials (read-only, agent sockets + configs) --------------
-      - ${SSH_AUTH_SOCK}:/run/host/ssh-agent
-      - ${XDG_RUNTIME_DIR}/gnupg/S.gpg-agent:/run/host/gpg-agent
-      - ${HOME}/.gnupg/pubring.kbx:/home/dev/.gnupg/pubring.kbx:ro
-      - ${HOME}/.gnupg/trustdb.gpg:/home/dev/.gnupg/trustdb.gpg:ro
-      - ${HOME}/.config/gh:/home/dev/.config/gh:ro
-      - ${HOME}/.gitconfig:/home/dev/.gitconfig:ro
-      # ----- Claude config (read-only from host; data + auth stay per-container) --
-      - ${HOME}/.claude/settings.json:/home/dev/.claude/settings.json:ro
-      - ${HOME}/.claude/CLAUDE.md:/home/dev/.claude/CLAUDE.md:ro
-      - ${HOME}/.claude/agents:/home/dev/.claude/agents:ro
       # ----- Claude shared-across-projects (install once, available everywhere) --
       - devtools_claude_plugins:/home/dev/.claude/plugins
       - devtools_claude_skills:/home/dev/.claude/skills

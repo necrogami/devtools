@@ -41,10 +41,18 @@ func TestNewCmdScaffoldsProject(t *testing.T) {
 	}
 
 	projDir := filepath.Join(root, "projects", "myproj")
-	for _, rel := range []string{"docker-compose.yml", ".env", ".mise.toml", "README.md"} {
+	for _, rel := range []string{"docker-compose.yml", ".env", ".mise.toml", "README.md", ".gitignore"} {
 		if _, err := os.Stat(filepath.Join(projDir, rel)); err != nil {
 			t.Errorf("missing generated file %s: %v", rel, err)
 		}
+	}
+
+	gi := testutil.MustReadFile(t, filepath.Join(projDir, ".gitignore"))
+	if !strings.Contains(gi, "docker-compose.override.yml") {
+		t.Errorf(".gitignore should exclude the runtime override:\n%s", gi)
+	}
+	if !strings.Contains(gi, ".env") {
+		t.Errorf(".gitignore should exclude .env:\n%s", gi)
 	}
 
 	env := testutil.MustReadFile(t, filepath.Join(projDir, ".env"))

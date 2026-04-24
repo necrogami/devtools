@@ -2,12 +2,24 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/necrogami/devtools/internal/paths"
 	"github.com/necrogami/devtools/internal/tmpl"
 )
+
+// projectGitignore is written into every scaffolded project. It prevents
+// the runtime-generated compose override and the .env (which contains the
+// project's pinned image tag and any service secrets) from being committed.
+const projectGitignore = `# devtools: written by 'dev new'
+# Host-specific bind mounts regenerated every 'dev up'.
+docker-compose.override.yml
+# Per-project environment; may contain secrets.
+.env
+`
 
 func newNewCmd() *cobra.Command {
 	var devtoolsTag string
@@ -37,6 +49,13 @@ func newNewCmd() *cobra.Command {
 			})
 			if err != nil {
 				return fmt.Errorf("scaffold: %w", err)
+			}
+
+			// Write .gitignore so the runtime-generated override and the
+			// project's .env never land in commits.
+			gi := filepath.Join(dstDir, ".gitignore")
+			if err := os.WriteFile(gi, []byte(projectGitignore), 0o644); err != nil {
+				return fmt.Errorf("write .gitignore: %w", err)
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(),

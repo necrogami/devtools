@@ -20,6 +20,12 @@ type hostPathRequirement struct {
 // hostPathRequirements are the minimum host paths the project compose
 // template needs to bind-mount successfully. We auto-create missing ones
 // so `dev up` "just works" on a fresh host without manual prep.
+//
+// Only devtools-specific paths (.claude/*, .config/gh) are created here —
+// credential paths (.gnupg, .gitconfig, ssh/gpg agent sockets) are discovered
+// at runtime by internal/hostenv and only bind-mounted when they actually
+// exist on the host. That gives graceful degradation on hosts without gpg
+// set up, macOS with Homebrew gpg paths, WSL, CI runners, etc.
 var hostPathRequirements = []hostPathRequirement{
 	{".claude", "dir", 0o755},
 	{".claude/settings.json", "file", 0o644},

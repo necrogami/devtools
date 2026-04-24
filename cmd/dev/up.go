@@ -6,6 +6,9 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
+
+	"github.com/necrogami/devtools/internal/compose"
+	"github.com/necrogami/devtools/internal/hostenv"
 )
 
 func newUpCmd() *cobra.Command {
@@ -21,6 +24,14 @@ func newUpCmd() *cobra.Command {
 			}
 			if _, err := ensureHostPaths(cmd.ErrOrStderr()); err != nil {
 				return fmt.Errorf("host pre-flight: %w", err)
+			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("resolve home: %w", err)
+			}
+			creds := hostenv.Discover(home)
+			if err := compose.WriteOverride(dir, creds); err != nil {
+				return fmt.Errorf("generate compose override: %w", err)
 			}
 			composeArgs := []string{"up"}
 			if detach {

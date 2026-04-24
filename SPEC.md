@@ -100,7 +100,8 @@ devtools/
 │       ├── list.go
 │       └── doctor.go
 ├── internal/
-│   ├── compose/                # YAML manipulation (bump tags, validate)
+│   ├── compose/                # YAML manipulation (bump tags, validate) + override renderer
+│   ├── hostenv/                # host credential / agent discovery for `dev up`
 │   ├── dockerclient/           # thin wrapper over docker/client
 │   ├── tmpl/                   # `dev new` templating
 │   ├── paths/                  # canonical path resolution (projects/, template/)
@@ -205,17 +206,23 @@ exec "$@"
 
 ## 7. Credential Flow
 
-Host side (remote server):
-- `ssh-agent` running as systemd user service with keys loaded (`ssh-add`)
-- `gpg-agent` running, socket at `$XDG_RUNTIME_DIR/gnupg/S.gpg-agent`
-- `~/.config/gh/hosts.yml` contains gh token (recommendation: fine-grained PAT)
-- `~/.gitconfig` with commit-signing config
+Credential and agent mounts are **not** part of the static `docker-compose.yml`. They live in a runtime-generated `docker-compose.override.yml` that `dev up` writes next to the base compose file on every invocation, based on what `internal/hostenv.Discover` finds on the host right now. Compose auto-loads the override. The override file is `.gitignored` and is safe to delete — `dev up` rewrites it.
 
-Container side mounts (read-only except sockets):
-- Socket: `$SSH_AUTH_SOCK` → `/run/host/ssh-agent`
-- Socket: `$XDG_RUNTIME_DIR/gnupg/S.gpg-agent` → `/run/host/gpg-agent`
+Host-side discovery (each source optional; if absent, the corresponding bind-mount is simply omitted):
+- `ssh-agent` — socket at `$SSH_AUTH_SOCK`
+- `gpg-agent` — socket path from `gpgconf --list-dirs agent-socket`, falling back to `$XDG_RUNTIME_DIR/gnupg/S.gpg-agent`, then `~/.gnupg/S.gpg-agent`
+- GPG public material: whichever of `~/.gnupg/{public-keys.d,pubring.kbx,trustdb.gpg,ownertrust}` exist
+- `~/.config/gh/` — gh CLI config + token (recommendation: fine-grained PAT)
+- `~/.gitconfig` — commit-signing / identity config
+- `~/.claude/{settings.json,CLAUDE.md,agents/}` — Claude personalization
+
+Container-side destinations (read-only except sockets):
+- Socket: host ssh-agent socket → `/run/host/ssh-agent` (and `SSH_AUTH_SOCK=/run/host/ssh-agent` is set only when the mount is present)
+- Socket: host gpg-agent socket → `/run/host/gpg-agent`
+- Dir (ro): `~/.gnupg/public-keys.d` → `/home/dev/.gnupg/public-keys.d`
 - File (ro): `~/.gnupg/pubring.kbx` → `/home/dev/.gnupg/pubring.kbx`
 - File (ro): `~/.gnupg/trustdb.gpg` → `/home/dev/.gnupg/trustdb.gpg`
+- File (ro): `~/.gnupg/ownertrust` → `/home/dev/.gnupg/ownertrust`
 - Dir (ro): `~/.config/gh` → `/home/dev/.config/gh`
 - File (ro): `~/.gitconfig` → `/home/dev/.gitconfig`
 - File (ro): `~/.claude/settings.json` → `/home/dev/.claude/settings.json`
@@ -285,7 +292,8 @@ Each reports PASS / WARN / FAIL with a remediation hint:
 
 ### 9.3 Internal packages
 
-- `internal/compose` — reads/writes `projects/<name>/{.env,docker-compose.yml}`; exposes `BumpImageTag(project, tag)`, `Validate(path)`, `ProjectDir(name)`. Uses `gopkg.in/yaml.v3` for compose manipulation.
+- `internal/compose` — reads/writes `projects/<name>/{.env,docker-compose.yml}`; exposes `BumpImageTag(project, tag)`, `Validate(path)`, `ProjectDir(name)`. Also renders the runtime `docker-compose.override.yml` (`RenderOverride`, `WriteOverride`) from a `hostenv.HostCreds` value. Uses `gopkg.in/yaml.v3` for base compose manipulation and plain string building for the override (so conditional mounts stay readable).
+- `internal/hostenv` — pure-Go discovery of host credentials / agent sockets / personalization files. `Discover(home) HostCreds` probes `$SSH_AUTH_SOCK`, `gpgconf --list-dirs agent-socket` (with `$XDG_RUNTIME_DIR/gnupg/` and `~/.gnupg/` fallbacks), `~/.gnupg/{public-keys.d,pubring.kbx,trustdb.gpg,ownertrust}`, `~/.gitconfig`, `~/.config/gh`, and `~/.claude/{settings.json,CLAUDE.md,agents}`. Empty fields mean "not available — don't mount."
 - `internal/dockerclient` — wraps `github.com/docker/docker/client`. v1 methods: `PingDaemon()`, `VolumeExists(name)`, `VolumeCreate(name)`, `ContainerInspect(name)`. Used by `doctor`, `init-shared`, `ps`.
 - `internal/tmpl` — loads `template/` via `os.DirFS`, substitutes variables (`{{.Project}}`, `{{.DevtoolsTag}}`), writes to destination.
 - `internal/paths` — resolves `repoRoot`, `templateDir`, `projectDir(name)` with proper validation (name is `^[a-z][a-z0-9-]{0,30}$`).

@@ -160,23 +160,30 @@ Volume isolation means a compromised project container can't enumerate siblings,
 
 Private keys **never** enter any container:
 
-| Credential | Host surface | Container surface |
+| Credential | Host surface (discovered) | Container surface |
 |---|---|---|
 | SSH private keys | `~/.ssh/` | *not mounted* — agent socket only |
 | GPG private keys | `~/.gnupg/private-keys-v1.d/` | *not mounted* — agent socket only |
 | SSH agent socket | `$SSH_AUTH_SOCK` | `/run/host/ssh-agent` |
-| GPG agent socket | `$XDG_RUNTIME_DIR/gnupg/S.gpg-agent` | `/run/host/gpg-agent` |
-| GPG public keyring | `~/.gnupg/pubring.kbx` | read-only bind |
-| gh token | `~/.config/gh/hosts.yml` | read-only bind |
+| GPG agent socket | `gpgconf --list-dirs agent-socket`, falling back to `$XDG_RUNTIME_DIR/gnupg/S.gpg-agent` → `~/.gnupg/S.gpg-agent` | `/run/host/gpg-agent` |
+| GPG public material | `~/.gnupg/public-keys.d/` (gpg 2.1+), `pubring.kbx`, `trustdb.gpg`, `ownertrust` — whichever exist | read-only binds |
+| gh token | `~/.config/gh/` | read-only bind |
 | Git identity | `~/.gitconfig` | read-only bind |
 | Claude config | `~/.claude/settings.json`, `CLAUDE.md`, `agents/` | read-only bind |
 | Claude auth | *(never shared)* | `claude login` inside each project; token lives in per-project home volume |
 
 A compromised container can *use* your agent during its lifetime (mitigated by `ssh-add -t 3600` and fine-grained gh PATs), but can't exfiltrate the key material itself.
 
-### Auto-mounted pre-flight
+### Host discovery + auto-generated override
 
-`dev up` runs `ensureHostPaths` first, touching any missing `~/.claude/*` files/dirs so Docker's bind-mounts don't fail on a fresh host. Invisible when everything already exists.
+The static `docker-compose.yml` in each project is host-agnostic — it defines the tools container and the shared/per-project volumes only. All credential and agent mounts are host-specific and are written out to `docker-compose.override.yml` (alongside the base file) every time `dev up` runs. Compose auto-loads the override, so `docker compose` commands against the project dir pick them up without extra flags.
+
+`dev up` does two things before calling compose:
+
+1. **`ensureHostPaths`** — touches missing `~/.claude/*` and `~/.config/gh/` so those bind sources always exist on a fresh host. Only devtools-specific paths are auto-created; credential paths (`.gnupg`, `.gitconfig`) are left alone and simply not mounted when absent.
+2. **`internal/hostenv.Discover`** — probes the host for each credential source in turn (ssh-agent, gpg-agent via `gpgconf`, gpg keybox/pubring, gitconfig, gh dir, claude personalization) and returns only the paths that exist right now. The override renderer (`internal/compose.WriteOverride`) emits a bind-mount for every non-empty field.
+
+That means `dev up` works on hosts without an ssh-agent, without gpg installed, on gpg 2.1+ (keybox dir) and legacy (pubring.kbx) alike, on macOS (Homebrew gpg socket paths) and Linux (systemd per-user runtime dir) — each host gets the subset that applies, and nothing fails when a piece is missing. The override file is `.gitignored` and can be deleted at any time; the next `dev up` rewrites it.
 
 ---
 
