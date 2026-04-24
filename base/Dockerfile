@@ -42,6 +42,17 @@ COPY base/install/40-ai-tools.sh /tmp/40-ai-tools.sh
 RUN /tmp/40-ai-tools.sh
 
 # -----------------------------------------------------------------------------
+# Custom /etc/skel — MUST be in place BEFORE `useradd -m` so the new user's
+# $HOME is populated from *our* skel (our .bashrc with the oh-my-posh block,
+# our .inputrc, our .config/mise etc.) rather than Debian's stock defaults.
+# A named volume mounted over /home/dev at runtime is initialized from the
+# image's /home/dev on first mount, so getting this right here is what makes
+# the prompt / completions / mise hook work in every freshly-provisioned
+# project without a reseed dance.
+# -----------------------------------------------------------------------------
+COPY --chown=${UID}:${GID} base/skel/ /etc/skel/
+
+# -----------------------------------------------------------------------------
 # Non-root user + sudo-NOPASSWD for adhoc installs inside the container.
 # -----------------------------------------------------------------------------
 RUN groupadd -g ${GID} ${USERNAME} \
@@ -65,7 +76,6 @@ RUN groupadd -g ${GID} ${USERNAME} \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /home/${USERNAME}/.local/share/mise \
  && install -d -m 0755 -o ${USERNAME} -g ${GID} /run/host
 
-COPY --chown=${UID}:${GID} base/skel/ /etc/skel/
 COPY base/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 

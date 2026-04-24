@@ -49,6 +49,65 @@ install -d /etc/skel/.config/oh-my-posh
 cp "$THEMES_DIR/atomic.omp.json" /etc/skel/.config/oh-my-posh/atomic.omp.json
 
 # -----------------------------------------------------------------------------
+# System-wide interactive-shell init.
+#
+# Debian's bash sources /etc/bash.bashrc for interactive non-login shells
+# (what you get from `docker exec -it <container> bash`), and /etc/profile
+# → /etc/profile.d/*.sh for login shells. Putting our mise + oh-my-posh
+# activation in a dedicated /etc/profile.d file and sourcing it from
+# /etc/bash.bashrc covers both, and — crucially — makes the prompt work
+# even when the user's home volume was seeded from an old image whose
+# ~/.bashrc predates these blocks. Without this, stale home volumes keep
+# whatever dotfiles they first got forever.
+# -----------------------------------------------------------------------------
+cat > /etc/profile.d/devtools-shell.sh <<'PROFILE'
+# devtools: interactive-shell init. Sourced by login shells via /etc/profile
+# and by non-login interactive bash via /etc/bash.bashrc. Safe to source
+# multiple times — every step is idempotent.
+if [ -z "${BASH_VERSION:-}" ]; then
+    return 0
+fi
+case $- in
+    *i*) ;;
+      *) return 0 ;;
+esac
+
+# mise — runtime manager. Activate hooks + shims.
+if [ -x /usr/local/bin/mise ]; then
+    eval "$(/usr/local/bin/mise activate bash)"
+fi
+
+# oh-my-posh — Atomic prompt theme.
+if command -v oh-my-posh >/dev/null 2>&1; then
+    __omp_theme="${POSH_THEMES_PATH:-/usr/local/share/oh-my-posh/themes}/atomic.omp.json"
+    [ -f "$__omp_theme" ] || __omp_theme="$HOME/.config/oh-my-posh/atomic.omp.json"
+    [ -f "$__omp_theme" ] || __omp_theme="/etc/skel/.config/oh-my-posh/atomic.omp.json"
+    if [ -f "$__omp_theme" ]; then
+        eval "$(oh-my-posh init bash --config "$__omp_theme")"
+    fi
+    unset __omp_theme
+fi
+
+# fzf — keybindings + completions (Debian package).
+[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && . /usr/share/doc/fzf/examples/key-bindings.bash
+[ -f /usr/share/bash-completion/completions/fzf ]    && . /usr/share/bash-completion/completions/fzf
+PROFILE
+chmod 0644 /etc/profile.d/devtools-shell.sh
+
+# Ensure /etc/bash.bashrc sources it for non-login interactive shells.
+# Idempotent: only appended once (guarded by a marker comment).
+if ! grep -q "devtools-shell.sh" /etc/bash.bashrc 2>/dev/null; then
+    cat >> /etc/bash.bashrc <<'BBRC'
+
+# devtools: interactive-shell init (mise activation, oh-my-posh prompt, fzf).
+# This runs *before* ~/.bashrc, so stale home volumes still get the prompt.
+if [ -r /etc/profile.d/devtools-shell.sh ]; then
+    . /etc/profile.d/devtools-shell.sh
+fi
+BBRC
+fi
+
+# -----------------------------------------------------------------------------
 # gh (GitHub CLI) — official apt repo.
 # -----------------------------------------------------------------------------
 install -d -m 0755 /etc/apt/keyrings
