@@ -22,12 +22,14 @@ type HostCreds struct {
 	// Agent sockets.
 	SSHAgentSock string // → /run/host/ssh-agent
 	GPGAgentSock string // → /run/host/gpg-agent
+	KeyboxdSock  string // → /run/host/keyboxd  (gpg 2.3+ with use-keyboxd)
 
 	// GPG public material (read-only from the host).
 	GPGKeyboxDir  string // ~/.gnupg/public-keys.d (gpg 2.1+)
 	GPGPubringKbx string // ~/.gnupg/pubring.kbx (legacy / keybox compat stub)
 	GPGTrustdb    string // ~/.gnupg/trustdb.gpg
 	GPGOwnerTrust string // ~/.gnupg/ownertrust (optional)
+	GPGCommonConf string // ~/.gnupg/common.conf (enables `use-keyboxd`, etc.)
 
 	// Git + GitHub CLI.
 	GitConfig string // ~/.gitconfig
@@ -50,6 +52,7 @@ func Discover(home string) HostCreds {
 	c := HostCreds{
 		SSHAgentSock: discoverSSHAgent(),
 		GPGAgentSock: discoverGPGAgent(home),
+		KeyboxdSock:  discoverKeyboxd(home),
 	}
 
 	// GPG public material — we mount every piece that exists. On gpg 2.1+
@@ -67,6 +70,9 @@ func Discover(home string) HostCreds {
 	}
 	if p := existingFile(filepath.Join(home, ".gnupg", "ownertrust")); p != "" {
 		c.GPGOwnerTrust = p
+	}
+	if p := existingFile(filepath.Join(home, ".gnupg", "common.conf")); p != "" {
+		c.GPGCommonConf = p
 	}
 
 	// Git + gh.
@@ -140,15 +146,53 @@ func discoverGPGAgent(home string) string {
 // without statting it. Callers stat the result. Empty string if gpgconf
 // isn't on PATH or exits nonzero.
 func gpgconfAgentSocket() string {
+	return gpgconfDir("agent-socket")
+}
+
+// gpgconfKeyboxdSocket returns whatever gpgconf reports as the keyboxd
+// socket (the key-storage daemon introduced in gpg 2.3, used when
+// `common.conf` contains `use-keyboxd`). Empty string if gpgconf is
+// unavailable or reports no socket.
+func gpgconfKeyboxdSocket() string {
+	return gpgconfDir("keyboxd-socket")
+}
+
+// gpgconfDir shells out to `gpgconf --list-dirs <key>` and returns the
+// trimmed output, or "" if gpgconf isn't on PATH / exits nonzero.
+func gpgconfDir(key string) string {
 	bin, err := exec.LookPath("gpgconf")
 	if err != nil {
 		return ""
 	}
-	out, err := exec.Command(bin, "--list-dirs", "agent-socket").Output()
+	out, err := exec.Command(bin, "--list-dirs", key).Output()
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// discoverKeyboxd returns a stat-able keyboxd socket path, or "".
+//
+// Same probe order as discoverGPGAgent: authoritative gpgconf output
+// first, then the standard XDG runtime dir, then ~/.gnupg for BSDs and
+// non-systemd setups.
+func discoverKeyboxd(home string) string {
+	if sock := gpgconfKeyboxdSocket(); sock != "" {
+		if _, err := os.Stat(sock); err == nil {
+			return sock
+		}
+	}
+	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
+		cand := filepath.Join(xdg, "gnupg", "S.keyboxd")
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+	}
+	cand := filepath.Join(home, ".gnupg", "S.keyboxd")
+	if _, err := os.Stat(cand); err == nil {
+		return cand
+	}
+	return ""
 }
 
 // ----- small helpers ---------------------------------------------------------

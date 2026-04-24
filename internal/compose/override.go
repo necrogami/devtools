@@ -20,14 +20,15 @@ func OverrideFile(projectDir string) string {
 // In-container destination paths — kept in one place so the override
 // renderer and any future docs stay in lock-step.
 const (
-	containerSSHSock      = "/run/host/ssh-agent"
-	containerGPGSock      = "/run/host/gpg-agent"
-	containerGPGHome      = "/home/dev/.gnupg"
-	containerHomeGitCfg   = "/home/dev/.gitconfig"
-	containerGHConfigDir  = "/home/dev/.config/gh"
+	containerSSHSock        = "/run/host/ssh-agent"
+	containerGPGSock        = "/run/host/gpg-agent"
+	containerKeyboxdSock    = "/run/host/keyboxd"
+	containerGPGHome        = "/home/dev/.gnupg"
+	containerHomeGitCfg     = "/home/dev/.gitconfig"
+	containerGHConfigDir    = "/home/dev/.config/gh"
 	containerClaudeSettings = "/home/dev/.claude/settings.json"
-	containerClaudeMd     = "/home/dev/.claude/CLAUDE.md"
-	containerClaudeAgents = "/home/dev/.claude/agents"
+	containerClaudeMd       = "/home/dev/.claude/CLAUDE.md"
+	containerClaudeAgents   = "/home/dev/.claude/agents"
 )
 
 // overrideHeader is the "you didn't write this" notice prepended to every
@@ -109,7 +110,13 @@ func buildMounts(c hostenv.HostCreds) []string {
 	if c.GPGAgentSock != "" {
 		m = append(m, c.GPGAgentSock+":"+containerGPGSock)
 	}
+	if c.KeyboxdSock != "" {
+		m = append(m, c.KeyboxdSock+":"+containerKeyboxdSock)
+	}
 
+	if c.GPGCommonConf != "" {
+		m = append(m, c.GPGCommonConf+":"+containerGPGHome+"/common.conf:ro")
+	}
 	if c.GPGKeyboxDir != "" {
 		m = append(m, c.GPGKeyboxDir+":"+containerGPGHome+"/public-keys.d:ro")
 	}

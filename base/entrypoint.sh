@@ -19,16 +19,23 @@ if [ -S /run/host/ssh-agent ]; then
     export SSH_AUTH_SOCK=/run/host/ssh-agent
 fi
 
-# --- 3. GPG agent ------------------------------------------------------------
-if [ -S /run/host/gpg-agent ]; then
+# --- 3. GPG agent + keyboxd --------------------------------------------------
+if [ -S /run/host/gpg-agent ] || [ -S /run/host/keyboxd ]; then
     install -d -m 0700 "$HOME/.gnupg"
+fi
+if [ -S /run/host/gpg-agent ]; then
     ln -sfn /run/host/gpg-agent "$HOME/.gnupg/S.gpg-agent"
-    # gpg also looks for the browser/extra sockets; symlinking the main socket
-    # is enough for signing/ssh/gpg --list-keys to function.
     if [ -t 0 ]; then
         GPG_TTY="$(tty 2>/dev/null || echo)"
         export GPG_TTY
     fi
+fi
+# Wire the keyboxd socket so gpg >= 2.3 with `use-keyboxd` in common.conf
+# can reach the host's key-storage daemon. Without this the container's gpg
+# auto-creates an empty pubring.kbx and reports "no keys" even though
+# public-keys.d is bind-mounted in.
+if [ -S /run/host/keyboxd ]; then
+    ln -sfn /run/host/keyboxd "$HOME/.gnupg/S.keyboxd"
 fi
 
 # --- 4. Project runtime install (non-blocking, best-effort) ------------------

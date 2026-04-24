@@ -28,14 +28,16 @@ func TestDiscoverFullyPopulatedHome(t *testing.T) {
 	mustTouch(t, sshSock, 0o600)
 	t.Setenv("SSH_AUTH_SOCK", sshSock)
 
-	// gpg-agent via XDG_RUNTIME_DIR (we skip PATH-based gpgconf here).
+	// gpg-agent + keyboxd via XDG_RUNTIME_DIR (we skip PATH-based gpgconf here).
 	xdg := filepath.Join(home, "run")
 	gnupgRunDir := filepath.Join(xdg, "gnupg")
 	if err := os.MkdirAll(gnupgRunDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	gpgSock := filepath.Join(gnupgRunDir, "S.gpg-agent")
+	keyboxdSock := filepath.Join(gnupgRunDir, "S.keyboxd")
 	mustTouch(t, gpgSock, 0o600)
+	mustTouch(t, keyboxdSock, 0o600)
 	t.Setenv("XDG_RUNTIME_DIR", xdg)
 	// Make sure gpgconf isn't found (PATH points at nothing useful).
 	t.Setenv("PATH", filepath.Join(home, "no-such-dir"))
@@ -46,6 +48,7 @@ func TestDiscoverFullyPopulatedHome(t *testing.T) {
 	mustTouch(t, filepath.Join(gpgHome, "pubring.kbx"), 0o600)
 	mustTouch(t, filepath.Join(gpgHome, "trustdb.gpg"), 0o600)
 	mustTouch(t, filepath.Join(gpgHome, "ownertrust"), 0o600)
+	mustTouch(t, filepath.Join(gpgHome, "common.conf"), 0o644)
 
 	// Git + gh.
 	mustTouch(t, filepath.Join(home, ".gitconfig"), 0o644)
@@ -65,6 +68,12 @@ func TestDiscoverFullyPopulatedHome(t *testing.T) {
 	}
 	if c.GPGAgentSock != gpgSock {
 		t.Errorf("GPGAgentSock = %q, want %q", c.GPGAgentSock, gpgSock)
+	}
+	if c.KeyboxdSock != keyboxdSock {
+		t.Errorf("KeyboxdSock = %q, want %q", c.KeyboxdSock, keyboxdSock)
+	}
+	if c.GPGCommonConf != filepath.Join(gpgHome, "common.conf") {
+		t.Errorf("GPGCommonConf = %q", c.GPGCommonConf)
 	}
 	if c.GPGKeyboxDir != filepath.Join(gpgHome, "public-keys.d") {
 		t.Errorf("GPGKeyboxDir = %q", c.GPGKeyboxDir)
@@ -195,6 +204,42 @@ func TestGPGAgentFallsBackToHome(t *testing.T) {
 
 	if got := discoverGPGAgent(home); got != sock {
 		t.Errorf("discoverGPGAgent = %q, want home fallback %q", got, sock)
+	}
+}
+
+func TestKeyboxdDiscoveryFallsBackThroughChain(t *testing.T) {
+	// No gpgconf on PATH, no socket anywhere → empty.
+	home := t.TempDir()
+	t.Setenv("PATH", filepath.Join(home, "no-such"))
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	if got := discoverKeyboxd(home); got != "" {
+		t.Errorf("expected empty keyboxd when nothing present, got %q", got)
+	}
+
+	// XDG fallback.
+	xdg := filepath.Join(home, "run")
+	mustMkdir(t, filepath.Join(xdg, "gnupg"), 0o700)
+	sock := filepath.Join(xdg, "gnupg", "S.keyboxd")
+	mustTouch(t, sock, 0o600)
+	t.Setenv("XDG_RUNTIME_DIR", xdg)
+
+	if got := discoverKeyboxd(home); got != sock {
+		t.Errorf("discoverKeyboxd = %q, want XDG fallback %q", got, sock)
+	}
+
+	// With gpgconf reporting a different (valid) path, prefer that.
+	stubDir := t.TempDir()
+	preferred := filepath.Join(home, "preferred-keyboxd")
+	mustTouch(t, preferred, 0o600)
+	stub := filepath.Join(stubDir, "gpgconf")
+	script := "#!/bin/sh\ncase \"$2\" in keyboxd-socket) echo " + preferred + " ;; *) echo ;; esac\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", stubDir)
+
+	if got := discoverKeyboxd(home); got != preferred {
+		t.Errorf("discoverKeyboxd = %q, want gpgconf-preferred %q", got, preferred)
 	}
 }
 
